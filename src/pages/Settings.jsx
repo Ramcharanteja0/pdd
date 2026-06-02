@@ -1,15 +1,14 @@
 import { useState } from 'react';
 import { Settings as SettingsIcon, Bell, Shield, Map, Users, Palette, Save } from 'lucide-react';
 import Topbar from '../components/Topbar';
-import { EVENT_INFO } from '../data/mockData';
 
 export default function Settings({ sidebarOpen, setSidebarOpen }) {
   const [saved, setSaved] = useState(false);
   const [form, setForm] = useState({
-    eventName: EVENT_INFO.name,
-    venue: EVENT_INFO.venue,
-    city: EVENT_INFO.city,
-    capacity: EVENT_INFO.totalCapacity,
+    eventName: '',
+    venue: '',
+    city: '',
+    capacity: 0,
     alertThreshold: 80,
     criticalThreshold: 90,
     autoAlert: true,
@@ -17,6 +16,7 @@ export default function Settings({ sidebarOpen, setSidebarOpen }) {
     smsAlert: false,
     emailReport: true,
   });
+
 
   const saveSettings = () => {
     setSaved(true);

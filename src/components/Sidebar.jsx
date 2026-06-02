@@ -3,7 +3,6 @@ import {
   LayoutDashboard, Map, Users, Bell, ShoppingBag,
   BarChart3, AlertTriangle, Zap, ChevronRight, LogOut, Settings, X, Radio
 } from 'lucide-react';
-import { EVENT_INFO } from '../data/mockData';
 import { useAuth } from '../context/AuthContext';
 
 const NAV = [
@@ -104,12 +103,11 @@ export default function Sidebar({ open, onClose }) {
               <span className="event-live-dot" />
               <span style={{ fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.5px', opacity: 0.9 }}>LIVE EVENT</span>
             </div>
-            <h4>{EVENT_INFO.name}</h4>
-            <p style={{ marginTop: 3 }}>{EVENT_INFO.venue}</p>
-            <p style={{ marginTop: 1 }}>{EVENT_INFO.date}</p>
+            <h4>CrowdIQ Platform</h4>
+            <p style={{ marginTop: 3 }}>Event Operations</p>
+            <p style={{ marginTop: 1 }}>Live Monitoring</p>
             <div style={{ marginTop: 10, display: 'flex', gap: 8 }}>
-              <div style={{ background: 'rgba(255,255,255,0.2)', borderRadius: 6, padding: '4px 8px', fontSize: '0.72rem', fontWeight: 600 }}>6,247 Live</div>
-              <div style={{ background: 'rgba(255,255,255,0.2)', borderRadius: 6, padding: '4px 8px', fontSize: '0.72rem', fontWeight: 600 }}>{EVENT_INFO.zones} Zones</div>
+              <div style={{ background: 'rgba(255,255,255,0.2)', borderRadius: 6, padding: '4px 8px', fontSize: '0.72rem', fontWeight: 600 }}>Connected</div>
             </div>
           </div>
 

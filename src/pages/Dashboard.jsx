@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Users, AlertTriangle, TrendingUp, TrendingDown, Activity, Zap, Shield, Wifi, WifiOff } from 'lucide-react';
+import { Users, AlertTriangle, TrendingUp, TrendingDown, Activity, Zap, Shield, Wifi, Radio } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import Topbar from '../components/Topbar';
-import { CROWD_TIMELINE, getDensityLevel, getDensityColor } from '../data/mockData';
-import { fetchZones, fetchAlerts, fetchPredictions, fetchStaff } from '../lib/supabaseService';
+import { getDensityLevel, getDensityColor } from '../data/mockData';
+import { fetchZones, fetchAlerts, fetchPredictions, fetchStaff, fetchEventInfo, buildCrowdTimeline, fetchAttendeeLocations } from '../lib/supabaseService';
 import { supabase } from '../lib/supabase';
 
 const CustomTooltip = ({ active, payload, label }) => {
@@ -23,24 +23,37 @@ export default function Dashboard({ sidebarOpen, setSidebarOpen }) {
   const [alerts, setAlerts] = useState([]);
   const [predictions, setPredictions] = useState([]);
   const [staff, setStaff] = useState([]);
+  const [eventInfo, setEventInfo] = useState({ name: 'Loading...', venue: '', total_capacity: 0 });
+  const [crowdTimeline, setCrowdTimeline] = useState([]);
+  const [trackedCount, setTrackedCount] = useState(0);
   const [loading, setLoading] = useState(true);
-  
-  const [refreshKey, setRefreshKey] = useState(0);
   const [lastRefreshed, setLastRefreshed] = useState(new Date());
 
   const loadData = useCallback(async () => {
     try {
-      const [zonesData, alertsData, predictionsData, staffData] = await Promise.all([
+      const [zonesData, alertsData, predictionsData, staffData, evtInfo, timeline] = await Promise.all([
         fetchZones(),
         fetchAlerts(),
         fetchPredictions(),
-        fetchStaff()
+        fetchStaff(),
+        fetchEventInfo(),
+        buildCrowdTimeline(),
       ]);
       setZones(zonesData);
       setAlerts(alertsData);
       setPredictions(predictionsData);
       setStaff(staffData);
+      setEventInfo(evtInfo);
+      setCrowdTimeline(timeline);
       setLastRefreshed(new Date());
+
+      // Get live tracked count
+      try {
+        const attendees = await fetchAttendeeLocations();
+        setTrackedCount((attendees || []).length);
+      } catch (e) {
+        setTrackedCount(0);
+      }
     } catch (err) {
       console.error('Error loading dashboard data:', err);
     } finally {
@@ -48,15 +61,9 @@ export default function Dashboard({ sidebarOpen, setSidebarOpen }) {
     }
   }, []);
 
-  const handleRefresh = useCallback(() => {
-    setRefreshKey(k => k + 1);
-    loadData();
-  }, [loadData]);
-
   useEffect(() => {
     loadData();
 
-    // ── Supabase Realtime Subscriptions ─────────────────────────
     const zonesChannel = supabase
       .channel('dashboard-zones')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'zones' }, (payload) => {
@@ -90,21 +97,28 @@ export default function Dashboard({ sidebarOpen, setSidebarOpen }) {
       })
       .subscribe();
 
+    // Refresh tracked count every 30s
+    const interval = setInterval(async () => {
+      try {
+        const attendees = await fetchAttendeeLocations();
+        setTrackedCount((attendees || []).length);
+      } catch (e) {}
+    }, 30000);
+
     return () => {
       supabase.removeChannel(zonesChannel);
       supabase.removeChannel(alertsChannel);
       supabase.removeChannel(staffChannel);
+      clearInterval(interval);
     };
   }, [loadData]);
 
-  // Compute dynamic stats based on database
+  // All computed from REAL database data
   const displayCrowd = zones.reduce((sum, z) => sum + Math.round(z.capacity * (z.density || 0) / 100), 0);
-  const totalCapacity = zones.reduce((sum, z) => sum + z.capacity, 0) || 8000;
-  const capacityPct = Math.round((displayCrowd / totalCapacity) * 100) || 78;
-
+  const totalCapacity = zones.reduce((sum, z) => sum + z.capacity, 0) || eventInfo.total_capacity || 0;
+  const capacityPct = totalCapacity > 0 ? Math.round((displayCrowd / totalCapacity) * 100) : 0;
   const activeAlerts = alerts.filter(a => !a.resolved);
   const criticalZones = zones.filter(z => getDensityLevel(z.density) === 'critical');
-  const staffOnDuty = staff.length;
   const staffActive = staff.filter(s => s.status === 'active').length;
 
   const lastStr = lastRefreshed.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
@@ -116,7 +130,7 @@ export default function Dashboard({ sidebarOpen, setSidebarOpen }) {
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg)' }}>
           <div className="glass-panel" style={{ padding: '30px 50px', textAlign: 'center', borderRadius: 20 }}>
             <div className="spinner" style={{ border: '4px solid rgba(99,102,241,0.1)', borderLeft: '4px solid var(--primary)', borderRadius: '50%', width: 40, height: 40, animation: 'spin 1s linear infinite', margin: '0 auto 16px' }} />
-            <p style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>Synchronizing with Supabase Realtime...</p>
+            <p style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>Connecting to Supabase...</p>
           </div>
         </div>
       </div>
@@ -127,8 +141,8 @@ export default function Dashboard({ sidebarOpen, setSidebarOpen }) {
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       <Topbar
         title="Operations Dashboard"
-        subtitle={`Tech Summit 2026 — NESCO, Mumbai · Last updated: ${lastStr}`}
-        onRefresh={handleRefresh}
+        subtitle={`${eventInfo.name}${eventInfo.venue ? ` — ${eventInfo.venue}` : ''} · Updated: ${lastStr}`}
+        onRefresh={loadData}
         onToggleSidebar={() => setSidebarOpen(o => !o)}
         sidebarOpen={sidebarOpen}
       />
@@ -137,16 +151,16 @@ export default function Dashboard({ sidebarOpen, setSidebarOpen }) {
         {/* Backend status */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 16, padding: '7px 14px', background: '#D1FAE5', border: '1px solid #A7F3D0', borderRadius: 99, width: 'fit-content', fontSize: '0.75rem', fontWeight: 600, color: '#065F46' }}>
           <Wifi size={13} />
-          🟢 Supabase Cloud Active — Live Postgres Syncing
+          🟢 Supabase Live — All data from database
         </div>
 
         {/* Stats */}
-        <div className="stat-grid fade-in" key={`stats-${refreshKey}`}>
+        <div className="stat-grid fade-in">
           <div className="stat-card indigo">
             <div className="stat-icon indigo"><Users size={20} /></div>
             <div className="stat-value">{displayCrowd.toLocaleString()}</div>
-            <div className="stat-label">Live Attendees</div>
-            <span className="stat-change up"><TrendingUp size={11} /> Calculated dynamically</span>
+            <div className="stat-label">Est. Attendees</div>
+            <span className="stat-change up"><Radio size={11} /> {trackedCount} GPS tracked</span>
           </div>
           <div className="stat-card red">
             <div className="stat-icon red"><AlertTriangle size={20} /></div>
@@ -158,50 +172,53 @@ export default function Dashboard({ sidebarOpen, setSidebarOpen }) {
             <div className="stat-icon green"><Shield size={20} /></div>
             <div className="stat-value">{capacityPct}%</div>
             <div className="stat-label">Venue Capacity</div>
-            <span className="stat-change up"><TrendingUp size={11} /> Limit: {totalCapacity.toLocaleString()}</span>
+            <span className="stat-change up"><TrendingUp size={11} /> Max: {totalCapacity.toLocaleString()}</span>
           </div>
           <div className="stat-card amber">
             <div className="stat-icon amber"><Activity size={20} /></div>
-            <div className="stat-value">{staffOnDuty}</div>
+            <div className="stat-value">{staff.length}</div>
             <div className="stat-label">Staff On-Duty</div>
-            <span className="stat-change up"><TrendingUp size={11} /> {staffActive} active, {staffOnDuty - staffActive} idle</span>
+            <span className="stat-change up"><TrendingUp size={11} /> {staffActive} active</span>
           </div>
           <div className="stat-card blue">
             <div className="stat-icon blue"><Zap size={20} /></div>
             <div className="stat-value">{criticalZones.length}</div>
             <div className="stat-label">Critical Zones</div>
-            <span className="stat-change down"><TrendingDown size={11} /> Needs dispatch</span>
+            <span className="stat-change down"><TrendingDown size={11} /> {criticalZones.length > 0 ? 'Needs dispatch' : 'All clear'}</span>
           </div>
         </div>
 
         <div className="grid-main-aside">
           <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-            {/* Crowd Flow Chart */}
+            {/* Crowd Flow Chart — from REAL GPS data */}
             <div className="card fade-in">
               <div className="card-header">
-                <span className="card-title">Live Crowd Flow Timeline</span>
-                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Today · Connected to Supabase</span>
+                <span className="card-title">Crowd Flow Timeline (GPS)</span>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Today · Built from attendee_locations</span>
               </div>
               <div className="card-body">
-                <ResponsiveContainer width="100%" height={220}>
-                  <AreaChart data={CROWD_TIMELINE} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
-                    <defs>
-                      <linearGradient id="gTotal" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#6366F1" stopOpacity={0.2}/><stop offset="95%" stopColor="#6366F1" stopOpacity={0}/>
-                      </linearGradient>
-                      <linearGradient id="gStage" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#EF4444" stopOpacity={0.15}/><stop offset="95%" stopColor="#EF4444" stopOpacity={0}/>
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" />
-                    <XAxis dataKey="time" tick={{ fontSize: 11, fill: '#94A3B8' }} />
-                    <YAxis tick={{ fontSize: 11, fill: '#94A3B8' }} />
-                    <Tooltip content={<CustomTooltip />} />
-                    <Area type="monotone" dataKey="attendees" name="Total" stroke="#6366F1" strokeWidth={2.5} fill="url(#gTotal)" />
-                    <Area type="monotone" dataKey="stage" name="Main Stage" stroke="#EF4444" strokeWidth={2} fill="url(#gStage)" />
-                    <Area type="monotone" dataKey="foodA" name="Food Court" stroke="#F59E0B" strokeWidth={2} fill="none" strokeDasharray="4 2" />
-                  </AreaChart>
-                </ResponsiveContainer>
+                {crowdTimeline.length > 0 ? (
+                  <ResponsiveContainer width="100%" height={220}>
+                    <AreaChart data={crowdTimeline} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
+                      <defs>
+                        <linearGradient id="gTotal" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#6366F1" stopOpacity={0.2}/><stop offset="95%" stopColor="#6366F1" stopOpacity={0}/>
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" />
+                      <XAxis dataKey="time" tick={{ fontSize: 11, fill: '#94A3B8' }} />
+                      <YAxis tick={{ fontSize: 11, fill: '#94A3B8' }} />
+                      <Tooltip content={<CustomTooltip />} />
+                      <Area type="monotone" dataKey="attendees" name="Check-ins" stroke="#6366F1" strokeWidth={2.5} fill="url(#gTotal)" />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--text-muted)' }}>
+                    <Radio size={28} style={{ opacity: 0.3, marginBottom: 8 }} />
+                    <div style={{ fontSize: '0.85rem', fontWeight: 600 }}>No GPS data yet</div>
+                    <div style={{ fontSize: '0.75rem', marginTop: 4 }}>Share the /checkin link with attendees to start tracking</div>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -262,22 +279,26 @@ export default function Dashboard({ sidebarOpen, setSidebarOpen }) {
             <div className="card fade-in">
               <div className="card-header"><span className="card-title">⚡ AI Predictions</span></div>
               <div className="card-body" style={{ paddingTop: 12 }}>
-                {predictions.slice(0, 3).map((p, i) => (
-                  <div key={p.id || i} className="prediction-box" style={{ marginBottom: i < 2 ? 10 : 0 }}>
-                    <h4>
-                      <span style={{ background: p.risk==='HIGH'?'#FEE2E2':p.risk==='MEDIUM'?'#FEF3C7':'#D1FAE5', color: p.risk==='HIGH'?'#991B1B':p.risk==='MEDIUM'?'#92400E':'#065F46', padding:'2px 7px',borderRadius:99,fontSize:'0.68rem' }}>{p.risk}</span>
-                      {p.zone}
-                    </h4>
-                    <p style={{ fontSize:'0.78rem',color:'var(--text-secondary)',marginBottom:6 }}>{p.prediction}</p>
-                    <p style={{ fontSize:'0.75rem',color:'var(--primary)',fontWeight:600 }}>→ {p.action}</p>
-                    <div style={{ marginTop:6,display:'flex',alignItems:'center',gap:6 }}>
-                      <div style={{ flex:1,height:4,background:'#E0E7FF',borderRadius:99 }}>
-                        <div style={{ width:`${p.confidence}%`,height:'100%',background:'var(--primary)',borderRadius:99 }} />
+                {predictions.length === 0 ? (
+                  <p style={{ textAlign: 'center', padding: '20px 0', fontSize: '0.82rem', color: 'var(--text-muted)' }}>No predictions available</p>
+                ) : (
+                  predictions.slice(0, 3).map((p, i) => (
+                    <div key={p.id || i} className="prediction-box" style={{ marginBottom: i < 2 ? 10 : 0 }}>
+                      <h4>
+                        <span style={{ background: p.risk==='HIGH'?'#FEE2E2':p.risk==='MEDIUM'?'#FEF3C7':'#D1FAE5', color: p.risk==='HIGH'?'#991B1B':p.risk==='MEDIUM'?'#92400E':'#065F46', padding:'2px 7px',borderRadius:99,fontSize:'0.68rem' }}>{p.risk}</span>
+                        {p.zone}
+                      </h4>
+                      <p style={{ fontSize:'0.78rem',color:'var(--text-secondary)',marginBottom:6 }}>{p.prediction}</p>
+                      <p style={{ fontSize:'0.75rem',color:'var(--primary)',fontWeight:600 }}>→ {p.action}</p>
+                      <div style={{ marginTop:6,display:'flex',alignItems:'center',gap:6 }}>
+                        <div style={{ flex:1,height:4,background:'#E0E7FF',borderRadius:99 }}>
+                          <div style={{ width:`${p.confidence}%`,height:'100%',background:'var(--primary)',borderRadius:99 }} />
+                        </div>
+                        <span style={{ fontSize:'0.7rem',fontWeight:700,color:'var(--primary)' }}>{p.confidence}%</span>
                       </div>
-                      <span style={{ fontSize:'0.7rem',fontWeight:700,color:'var(--primary)' }}>{p.confidence}%</span>
                     </div>
-                  </div>
-                ))}
+                  ))
+                )}
               </div>
             </div>
           </div>

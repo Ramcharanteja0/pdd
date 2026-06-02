@@ -258,3 +258,65 @@ export async function getGateScanCounts() {
   const exits = (data || []).filter(s => s.scan_type === 'exit').length;
   return { entries, exits, inside: entries - exits };
 }
+
+// ── EVENT CONFIG ──────────────────────────────────────────
+export async function fetchEventInfo() {
+  try {
+    const { data } = await supabase
+      .from('events')
+      .select('*')
+      .eq('id', 'current')
+      .maybeSingle();
+    if (data) return data;
+  } catch (e) {
+    // Table may not exist yet — return defaults
+  }
+  // Sensible defaults derived from zones table
+  const { data: zones } = await supabase.from('zones').select('capacity');
+  const totalCapacity = (zones || []).reduce((s, z) => s + (z.capacity || 0), 0);
+  return {
+    id: 'current',
+    name: 'Live Event',
+    venue: 'Event Venue',
+    city: '',
+    total_capacity: totalCapacity || 0,
+  };
+}
+
+// ── CROWD TIMELINE (built from real GPS data) ─────────────
+export async function buildCrowdTimeline() {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const { data, error } = await supabase
+    .from('attendee_locations')
+    .select('created_at, zone_id, zone_name')
+    .gte('created_at', today.toISOString())
+    .eq('event_id', 'current')
+    .order('created_at', { ascending: true });
+
+  if (error || !data || data.length === 0) return [];
+
+  // Group by hour
+  const hourMap = {};
+  data.forEach(row => {
+    const dt = new Date(row.created_at);
+    const hourKey = `${String(dt.getHours()).padStart(2, '0')}:00`;
+    if (!hourMap[hourKey]) hourMap[hourKey] = { time: hourKey, attendees: 0, zones: {} };
+    hourMap[hourKey].attendees++;
+    const zn = row.zone_name || 'Outside';
+    hourMap[hourKey].zones[zn] = (hourMap[hourKey].zones[zn] || 0) + 1;
+  });
+
+  return Object.values(hourMap).sort((a, b) => a.time.localeCompare(b.time));
+}
+
+// ── ZONE DENSITY SNAPSHOT (for radar/analytics) ───────────
+export async function fetchZoneDensitySnapshot() {
+  const { data: zones } = await supabase.from('zones').select('id, name, density, capacity');
+  return (zones || []).map(z => ({
+    zone: z.name,
+    density: z.density || 0,
+    capacity: z.capacity || 0,
+    occupancy: Math.round((z.capacity || 0) * (z.density || 0) / 100),
+  }));
+}
