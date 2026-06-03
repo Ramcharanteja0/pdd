@@ -12,21 +12,8 @@ function haversineDistance(lat1, lon1, lat2, lon2) {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-// Fallback zones (used if Supabase fetch fails)
-const FALLBACK_ZONES = [
-  { id: 'Z1', name: 'Main Stage', lat: 19.0765, lng: 72.8773, radius_meters: 80 },
-  { id: 'Z2', name: 'North Entrance', lat: 19.0780, lng: 72.8768, radius_meters: 40 },
-  { id: 'Z3', name: 'Food Court A', lat: 19.0758, lng: 72.8780, radius_meters: 50 },
-  { id: 'Z4', name: 'Tech Expo Hall', lat: 19.0760, lng: 72.8760, radius_meters: 70 },
-  { id: 'Z5', name: 'Workshop Zone', lat: 19.0748, lng: 72.8775, radius_meters: 35 },
-  { id: 'Z6', name: 'South Exit', lat: 19.0750, lng: 72.8763, radius_meters: 40 },
-  { id: 'Z7', name: 'VIP Lounge', lat: 19.0770, lng: 72.8785, radius_meters: 30 },
-  { id: 'Z8', name: 'Parking A', lat: 19.0785, lng: 72.8780, radius_meters: 60 },
-  { id: 'Z9', name: 'First Aid', lat: 19.0755, lng: 72.8770, radius_meters: 20 },
-  { id: 'Z10', name: 'Media Centre', lat: 19.0762, lng: 72.8790, radius_meters: 25 },
-  { id: 'Z11', name: 'Food Court B', lat: 19.0742, lng: 72.8768, radius_meters: 50 },
-  { id: 'Z12', name: 'Emergency Gate', lat: 19.0775, lng: 72.8758, radius_meters: 35 },
-];
+// No hardcoded fallback zones — always load from Supabase
+const FALLBACK_ZONES = [];
 
 function getDeviceId() {
   let id = localStorage.getItem('crowdiq_device_id');
@@ -69,23 +56,30 @@ export default function AttendeeCheckin() {
   const [accuracy, setAccuracy] = useState(null);
   const [error, setError] = useState('');
   const [zones, setZones] = useState(FALLBACK_ZONES);
+  const [eventInfo, setEventInfo] = useState({ name: 'Live Event', venue: '' });
   const [lastSent, setLastSent] = useState(null);
   const [sendCount, setSendCount] = useState(0);
   const watchIdRef = useRef(null);
   const intervalRef = useRef(null);
   const deviceId = useRef(getDeviceId());
 
-  // Fetch real zones from Supabase
+  // Fetch real zones + event info from Supabase
   useEffect(() => {
-    async function loadZones() {
+    async function loadData() {
       try {
         const { data } = await supabase.from('zones').select('id, name, lat, lng, radius_meters');
         if (data && data.length > 0) setZones(data);
       } catch (e) {
-        console.warn('Using fallback zones:', e);
+        console.warn('Zone load failed:', e);
+      }
+      try {
+        const { data: evt } = await supabase.from('events').select('*').eq('id', 'current').maybeSingle();
+        if (evt) setEventInfo({ name: evt.name, venue: `${evt.venue || ''}${evt.city ? ', ' + evt.city : ''}` });
+      } catch (e) {
+        // events table may not exist — use defaults
       }
     }
-    loadZones();
+    loadData();
   }, []);
 
   // Determine which zone the attendee is in
@@ -254,8 +248,8 @@ export default function AttendeeCheckin() {
 
         {/* Event Info */}
         <div style={{ textAlign: 'center', marginBottom: 24 }}>
-          <div style={{ fontSize: '1.2rem', fontWeight: 800 }}>Tech Summit 2026</div>
-          <div style={{ fontSize: '0.78rem', opacity: 0.6, marginTop: 4 }}>NESCO Exhibition Centre, Mumbai</div>
+          <div style={{ fontSize: '1.2rem', fontWeight: 800 }}>{eventInfo.name}</div>
+          <div style={{ fontSize: '0.78rem', opacity: 0.6, marginTop: 4 }}>{eventInfo.venue || 'Loading venue...'}</div>
         </div>
 
         {/* ── IDLE STATE ── */}
