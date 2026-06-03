@@ -164,7 +164,7 @@ export default function Heatmap({ sidebarOpen, setSidebarOpen }) {
           {/* Map */}
           <div className="card" style={{ overflow: 'hidden', position: 'relative' }}>
             <div className="card-header">
-              <span className="card-title">🗺️ NESCO Exhibition Centre — Live</span>
+              <span className="card-title">🗺️ Live Venue Heatmap</span>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <button onClick={fetchAttendeeCounts} style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 6, padding: '4px 8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.72rem', color: 'var(--text-muted)' }}>
                   <RefreshCw size={11} /> Refresh
@@ -176,8 +176,8 @@ export default function Heatmap({ sidebarOpen, setSidebarOpen }) {
             </div>
             <div style={{ height: 520, margin: '12px 16px 16px' }}>
               <MapContainer
-                center={[19.0765, 72.8773]}
-                zoom={16}
+                center={zones.length > 0 ? [zones.reduce((s,z) => s + z.lat, 0) / zones.length, zones.reduce((s,z) => s + z.lng, 0) / zones.length] : [12.8523, 80.0514]}
+                zoom={17}
                 style={{ height: '100%', width: '100%', borderRadius: 10 }}
                 zoomControl={true}
               >
