@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Zap, AlertTriangle, CheckCircle, ShieldAlert, Terminal, Sparkles } from 'lucide-react';
 import { RadarChart, Radar, PolarGrid, PolarAngleAxis, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
 import Topbar from '../components/Topbar';
-import { fetchPredictions, fetchAutomatedActions, logAutomatedAction, fetchZoneDensitySnapshot } from '../lib/supabaseService';
+import { fetchPredictions, fetchAutomatedActions, logAutomatedAction, fetchZoneDensitySnapshot, fetchRollingPrediction } from '../lib/supabaseService';
 import { supabase } from '../lib/supabase';
 
 const RISK_CONFIG = {
@@ -33,26 +33,44 @@ export default function Predictions({ sidebarOpen, setSidebarOpen }) {
       // Build radar from real zone densities
       setRadarData(snapshot.slice(0, 8).map(z => ({ zone: z.zone.length > 12 ? z.zone.substring(0, 10) + '..' : z.zone, density: z.density })));
 
-      // Build forecast by extrapolating current trends
-      if (snapshot.length > 0) {
-        const top3 = snapshot.sort((a, b) => b.density - a.density).slice(0, 3);
-        const forecast = [
-          { time: 'Now' },
-          { time: '+15m' },
-          { time: '+30m' },
-          { time: '+45m' },
-          { time: '+60m' },
-        ];
-        top3.forEach((z, idx) => {
-          const key = z.zone.substring(0, 10);
-          const d = z.density;
-          // Simple trend: critical zones increase short-term then decrease, others stay stable
-          const trend = d >= 80 ? [d, Math.min(100, d + 3), d - 5, d - 15, d - 25] :
-                        d >= 55 ? [d, d + 2, d + 5, d - 3, d - 8] :
-                                  [d, d + 1, d + 3, d + 2, d - 1];
-          forecast.forEach((f, i) => { f[key] = Math.max(0, Math.min(100, trend[i])); });
-        });
-        setForecastData(forecast);
+      // Build forecast from rolling prediction (real GPS trend analysis)
+      try {
+        const rolling = await fetchRollingPrediction();
+        if (rolling && rolling.length > 0) {
+          const top3 = rolling.slice(0, 3);
+          const forecast = [
+            { time: 'Now' },
+            { time: '+5m' },
+            { time: '+10m' },
+            { time: '+15m' },
+          ];
+          top3.forEach(z => {
+            const key = z.zone.length > 12 ? z.zone.substring(0, 10) : z.zone;
+            const current = z.currentCount || 0;
+            const predicted = z.predicted || 0;
+            const step = (predicted - current) / 3;
+            forecast[0][key] = current;
+            forecast[1][key] = Math.max(0, Math.round(current + step));
+            forecast[2][key] = Math.max(0, Math.round(current + step * 2));
+            forecast[3][key] = Math.max(0, predicted);
+          });
+          setForecastData(forecast);
+        } else {
+          // Fallback: extrapolate from current zone densities
+          const top3 = snapshot.sort((a, b) => b.density - a.density).slice(0, 3);
+          const forecast = [{ time: 'Now' }, { time: '+15m' }, { time: '+30m' }, { time: '+45m' }, { time: '+60m' }];
+          top3.forEach(z => {
+            const key = z.zone.substring(0, 10);
+            const d = z.density;
+            const trend = d >= 80 ? [d, Math.min(100, d + 3), d - 5, d - 15, d - 25] :
+                          d >= 55 ? [d, d + 2, d + 5, d - 3, d - 8] :
+                                    [d, d + 1, d + 3, d + 2, d - 1];
+            forecast.forEach((f, i) => { f[key] = Math.max(0, Math.min(100, trend[i])); });
+          });
+          setForecastData(forecast);
+        }
+      } catch (e) {
+        console.warn('Rolling prediction not available:', e.message);
       }
     } catch (err) {
       console.error('Error loading AI Predictions:', err);

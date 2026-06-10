@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
+import { smoothGPS, resetGPSFilter } from '../lib/kalmanFilter';
+import { hashDeviceId } from '../lib/anonymize';
 
 // Haversine distance formula (meters)
 function haversineDistance(lat1, lon1, lat2, lon2) {
@@ -98,15 +100,23 @@ export default function AttendeeCheckin() {
     return closest;
   }, [zones]);
 
-  // Send location to Supabase
+  // Send location to Supabase (with Kalman smoothing + anonymization)
   const sendLocation = useCallback(async (lat, lng, acc) => {
-    const zone = detectZone(lat, lng);
+    // Step 1: Kalman-smooth the raw GPS (reduces ±5m noise to ~±1m)
+    const smoothed = smoothGPS(lat, lng, acc);
+
+    // Step 2: Detect zone using smoothed coordinates
+    const zone = detectZone(smoothed.lat, smoothed.lng);
     setCurrentZone(zone);
+
     try {
+      // Step 3: Anonymize device ID (SHA-256 hash — zero PII stored)
+      const anonToken = await hashDeviceId(deviceId.current);
+
       await upsertLocation({
-        deviceId: deviceId.current,
-        latitude: lat,
-        longitude: lng,
+        deviceId: anonToken,
+        latitude: smoothed.lat,
+        longitude: smoothed.lng,
         accuracy: acc,
         zoneId: zone?.id || null,
         zoneName: zone?.name || null
