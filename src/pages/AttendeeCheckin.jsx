@@ -17,6 +17,10 @@ function haversineDistance(lat1, lon1, lat2, lon2) {
 // No hardcoded fallback zones — always load from Supabase
 const FALLBACK_ZONES = [];
 
+// Rate limiter: max 1 GPS ping per 10 seconds
+const RATE_LIMIT_MS = 10000;
+let lastSendTime = 0;
+
 function getDeviceId() {
   let id = localStorage.getItem('crowdiq_device_id');
   if (!id) {
@@ -100,8 +104,13 @@ export default function AttendeeCheckin() {
     return closest;
   }, [zones]);
 
-  // Send location to Supabase (with Kalman smoothing + anonymization)
+  // Send location to Supabase (with Kalman smoothing + anonymization + rate limiting)
   const sendLocation = useCallback(async (lat, lng, acc) => {
+    // Rate limit: skip if sent less than 10 seconds ago
+    const now = Date.now();
+    if (now - lastSendTime < RATE_LIMIT_MS) return;
+    lastSendTime = now;
+
     // Step 1: Kalman-smooth the raw GPS (reduces ±5m noise to ~±1m)
     const smoothed = smoothGPS(lat, lng, acc);
 
@@ -130,6 +139,25 @@ export default function AttendeeCheckin() {
 
   // Start GPS tracking
   const startTracking = () => {
+    // Check if running inside Android WebView with native GPS service
+    const isAndroidBridge = typeof window !== 'undefined' && window.CrowdIQ;
+
+    if (isAndroidBridge) {
+      // Android native GPS — listen for events from LocationService
+      setStatus('tracking');
+      const handler = (e) => {
+        const { lat, lng, accuracy: acc } = e.detail;
+        setPosition({ lat, lng });
+        setAccuracy(acc);
+        sendLocation(lat, lng, acc);
+      };
+      window.addEventListener('crowdiq-gps', handler);
+      // Store handler ref for cleanup
+      watchIdRef.current = handler;
+      return;
+    }
+
+    // Browser fallback
     if (!navigator.geolocation) {
       setError('GPS is not supported by your browser.');
       setStatus('error');
@@ -179,8 +207,15 @@ export default function AttendeeCheckin() {
 
   // Stop tracking and check out
   const checkout = async () => {
+    // Clean up Android bridge listener OR browser watch
     if (watchIdRef.current !== null) {
-      navigator.geolocation.clearWatch(watchIdRef.current);
+      if (typeof watchIdRef.current === 'function') {
+        // Android bridge: remove event listener
+        window.removeEventListener('crowdiq-gps', watchIdRef.current);
+      } else {
+        // Browser: clear geolocation watch
+        navigator.geolocation.clearWatch(watchIdRef.current);
+      }
       watchIdRef.current = null;
     }
     if (intervalRef.current) {

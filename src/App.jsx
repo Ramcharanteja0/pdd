@@ -17,6 +17,7 @@ import Analytics from './pages/Analytics';
 import Settings from './pages/Settings';
 import Tracking from './pages/Tracking';
 import AttendeeCheckin from './pages/AttendeeCheckin';
+import EventSetup from './pages/EventSetup';
 
 function ProtectedRoute({ children }) {
   const { isAuth } = useAuth();
@@ -53,6 +54,7 @@ function AppShell() {
           <Route path="/analytics"   element={<Analytics   sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} />} />
           <Route path="/settings"    element={<Settings    sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} />} />
           <Route path="/tracking"    element={<Tracking    sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} />} />
+          <Route path="/event-setup" element={<EventSetup  sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} />} />
           <Route path="*"            element={<Navigate to="/dashboard" replace />} />
         </Routes>
       </div>

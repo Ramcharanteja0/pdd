@@ -1,7 +1,7 @@
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Map, Users, Bell, ShoppingBag,
-  BarChart3, AlertTriangle, Zap, ChevronRight, LogOut, Settings, X, Radio
+  BarChart3, AlertTriangle, Zap, ChevronRight, LogOut, Settings, X, Radio, MapPin
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
@@ -21,8 +21,9 @@ const NAV = [
     { path: '/incidents',   label: 'Incidents',       icon: AlertTriangle, badge: 1    },
   ]},
   { section: 'Reports & Config', items: [
-    { path: '/analytics', label: 'Analytics', icon: BarChart3, badge: null },
-    { path: '/settings',  label: 'Settings',  icon: Settings,  badge: null },
+    { path: '/analytics',    label: 'Analytics',    icon: BarChart3, badge: null },
+    { path: '/event-setup',  label: 'Event Setup',  icon: MapPin,    badge: null },
+    { path: '/settings',     label: 'Settings',     icon: Settings,  badge: null },
   ]},
 ];
 
