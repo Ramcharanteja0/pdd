@@ -1,28 +1,34 @@
--- CrowdIQ v2 — Event Setup Migration
+-- CrowdIQ — Create Events Table + Venue Coordinates
 -- Run in: Supabase Dashboard → SQL Editor → New Query
--- Adds venue_lat/venue_lng columns to events table for admin-configured locations
 
--- Ensure events table has venue coordinate columns
-DO $$
-BEGIN
-  -- Add venue_lat if not exists
-  IF NOT EXISTS (
-    SELECT 1 FROM information_schema.columns
-    WHERE table_schema = 'public' AND table_name = 'events' AND column_name = 'venue_lat'
-  ) THEN
-    ALTER TABLE public.events ADD COLUMN venue_lat double precision;
-  END IF;
+-- 1. Create events table if it doesn't exist
+CREATE TABLE IF NOT EXISTS public.events (
+  id              text PRIMARY KEY DEFAULT 'current',
+  name            text DEFAULT 'Untitled Event',
+  venue           text,
+  city            text,
+  date            text,
+  total_capacity  integer DEFAULT 5000,
+  venue_lat       double precision,
+  venue_lng       double precision,
+  created_at      timestamptz DEFAULT now(),
+  updated_at      timestamptz DEFAULT now()
+);
 
-  -- Add venue_lng if not exists
-  IF NOT EXISTS (
-    SELECT 1 FROM information_schema.columns
-    WHERE table_schema = 'public' AND table_name = 'events' AND column_name = 'venue_lng'
-  ) THEN
-    ALTER TABLE public.events ADD COLUMN venue_lng double precision;
-  END IF;
-END $$;
+-- 2. Enable RLS but allow all operations (admin-only page handles auth)
+ALTER TABLE public.events ENABLE ROW LEVEL SECURITY;
 
--- Ensure zones table has radius_meters if missing
+CREATE POLICY "Allow all operations on events"
+  ON public.events FOR ALL
+  USING (true)
+  WITH CHECK (true);
+
+-- 3. Insert default event row if none exists
+INSERT INTO public.events (id, name, venue, city, total_capacity)
+VALUES ('current', 'My Event', 'Set via Event Setup', '', 5000)
+ON CONFLICT (id) DO NOTHING;
+
+-- 4. Ensure zones table has radius_meters column
 DO $$
 BEGIN
   IF NOT EXISTS (

@@ -18,6 +18,7 @@ import Settings from './pages/Settings';
 import Tracking from './pages/Tracking';
 import AttendeeCheckin from './pages/AttendeeCheckin';
 import EventSetup from './pages/EventSetup';
+import ResetPassword from './pages/ResetPassword';
 
 function ProtectedRoute({ children }) {
   const { isAuth } = useAuth();
@@ -69,8 +70,9 @@ function AppRoutes() {
       <Route path="/"         element={<PublicRoute><Onboarding /></PublicRoute>} />
       <Route path="/login"    element={<PublicRoute><Login /></PublicRoute>} />
       <Route path="/register" element={<PublicRoute><Register /></PublicRoute>} />
-      <Route path="/checkin"  element={<AttendeeCheckin />} />
-      <Route path="/*"        element={<ProtectedRoute><AppShell /></ProtectedRoute>} />
+      <Route path="/checkin"        element={<AttendeeCheckin />} />
+      <Route path="/reset-password" element={<ResetPassword />} />
+      <Route path="/*"              element={<ProtectedRoute><AppShell /></ProtectedRoute>} />
     </Routes>
   );
 }
