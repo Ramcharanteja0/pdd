@@ -1,50 +1,93 @@
 import { useNavigate, useLocation } from 'react-router-dom';
+import { useState, useEffect, useRef } from 'react';
 import {
   LayoutDashboard, Map, Users, Bell, ShoppingBag,
   BarChart3, AlertTriangle, Zap, ChevronRight, LogOut, Settings, X, Radio, MapPin
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { supabase } from '../lib/supabase';
 
+// Static nav structure — badges are injected dynamically below
 const NAV = [
   { section: 'Operations', items: [
-    { path: '/dashboard',   label: 'Dashboard',    icon: LayoutDashboard, badge: null },
-    { path: '/heatmap',     label: 'Live Heatmap', icon: Map,             badge: null },
-    { path: '/alerts',      label: 'Alerts',       icon: Bell,            badge: 4    },
-    { path: '/staff',       label: 'Staff',        icon: Users,           badge: null },
+    { path: '/dashboard',   label: 'Dashboard',         icon: LayoutDashboard, badgeKey: null       },
+    { path: '/heatmap',     label: 'Live Heatmap',      icon: Map,             badgeKey: null       },
+    { path: '/alerts',      label: 'Alerts',            icon: Bell,            badgeKey: 'alerts'   },
+    { path: '/staff',       label: 'Staff',             icon: Users,           badgeKey: null       },
   ]},
   { section: 'Tracking', items: [
-    { path: '/tracking',    label: 'Live GPS Tracking', icon: Radio,       badge: null },
+    { path: '/tracking',    label: 'Live GPS Tracking', icon: Radio,           badgeKey: null       },
   ]},
   { section: 'Intelligence', items: [
-    { path: '/predictions', label: 'AI Predictions', icon: Zap,           badge: null },
-    { path: '/vendors',     label: 'Vendors',         icon: ShoppingBag,   badge: null },
-    { path: '/incidents',   label: 'Incidents',       icon: AlertTriangle, badge: 1    },
+    { path: '/predictions', label: 'AI Predictions',   icon: Zap,             badgeKey: null       },
+    { path: '/vendors',     label: 'Vendors',           icon: ShoppingBag,     badgeKey: null       },
+    { path: '/incidents',   label: 'Incidents',         icon: AlertTriangle,   badgeKey: 'incidents'},
   ]},
   { section: 'Reports & Config', items: [
-    { path: '/analytics',    label: 'Analytics',    icon: BarChart3, badge: null },
-    { path: '/event-setup',  label: 'Event Setup',  icon: MapPin,    badge: null },
-    { path: '/settings',     label: 'Settings',     icon: Settings,  badge: null },
+    { path: '/analytics',   label: 'Analytics',         icon: BarChart3,       badgeKey: null       },
+    { path: '/event-setup', label: 'Event Setup',       icon: MapPin,          badgeKey: null       },
+    { path: '/settings',    label: 'Settings',          icon: Settings,        badgeKey: null       },
   ]},
 ];
 
 export default function Sidebar({ open, onClose }) {
-  const navigate = useNavigate();
-  const location = useLocation();
+  const navigate  = useNavigate();
+  const location  = useLocation();
   const { logout, user } = useAuth();
+
+  // Live badge counts — only unresolved / open items
+  const [badges, setBadges] = useState({ alerts: 0, incidents: 0 });
+  const channelRef = useRef(null);
+
+  // ── Fetch live counts ──────────────────────────────────────
+  useEffect(() => {
+    fetchCounts();
+    setupRealtime();
+    return () => {
+      if (channelRef.current) supabase.removeChannel(channelRef.current);
+    };
+  }, []);
+
+  async function fetchCounts() {
+    try {
+      const [alertsRes, incidentsRes] = await Promise.all([
+        supabase
+          .from('alerts')
+          .select('id', { count: 'exact', head: true })
+          .eq('resolved', false),
+        supabase
+          .from('incidents')
+          .select('id', { count: 'exact', head: true })
+          .neq('status', 'resolved'),
+      ]);
+      setBadges({
+        alerts:    alertsRes.count  ?? 0,
+        incidents: incidentsRes.count ?? 0,
+      });
+    } catch (err) {
+      console.warn('Sidebar badge fetch failed:', err.message);
+    }
+  }
+
+  // ── Realtime: re-fetch on any change to alerts or incidents ─
+  function setupRealtime() {
+    const ch = supabase
+      .channel('sidebar-badges')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'alerts' },    () => fetchCounts())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'incidents' }, () => fetchCounts())
+      .subscribe();
+    channelRef.current = ch;
+  }
 
   const handleNav = (path) => {
     navigate(path);
-    if (onClose) onClose(); // auto-close on mobile
+    if (onClose) onClose();
   };
 
   return (
     <>
-      {/* Overlay backdrop for mobile when open */}
       {open && (
-        <div
-          className="sidebar-overlay"
-          onClick={onClose}
-        />
+        <div className="sidebar-overlay" onClick={onClose} />
       )}
 
       <aside className={`sidebar ${!open ? 'collapsed' : ''}`}>
@@ -64,7 +107,6 @@ export default function Sidebar({ open, onClose }) {
             <div className="logo-text">Crowd<span>IQ</span></div>
             <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontWeight: 500 }}>Intelligence Platform</div>
           </div>
-          {/* Close button visible always for easy collapse */}
           <button
             onClick={onClose}
             style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 4, display: 'flex', alignItems: 'center', borderRadius: 6 }}
@@ -79,8 +121,10 @@ export default function Sidebar({ open, onClose }) {
             <div key={section.section} className="nav-section">
               <div className="nav-section-label">{section.section}</div>
               {section.items.map(item => {
-                const Icon = item.icon;
+                const Icon   = item.icon;
                 const active = location.pathname === item.path;
+                // Get live count; only show badge if > 0
+                const count  = item.badgeKey ? (badges[item.badgeKey] ?? 0) : 0;
                 return (
                   <div
                     key={item.path}
@@ -89,7 +133,9 @@ export default function Sidebar({ open, onClose }) {
                   >
                     <Icon size={17} />
                     <span>{item.label}</span>
-                    {item.badge && <span className="badge">{item.badge}</span>}
+                    {count > 0 && (
+                      <span className="badge" style={{ transition: 'all 0.3s' }}>{count}</span>
+                    )}
                     {active && <ChevronRight size={14} style={{ marginLeft: 'auto', opacity: 0.7 }} />}
                   </div>
                 );
