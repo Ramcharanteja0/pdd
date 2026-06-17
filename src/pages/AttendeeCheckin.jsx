@@ -48,10 +48,11 @@ async function upsertLocation({ deviceId, latitude, longitude, accuracy, zoneId,
   }
 }
 
-async function removeLocation(deviceId) {
+async function removeLocation(anonToken) {
+  // anonToken is the SHA-256 hash stored in device_id column
   await supabase.from('attendee_locations')
     .delete()
-    .eq('device_id', deviceId)
+    .eq('device_id', anonToken)
     .eq('event_id', 'current');
 }
 
@@ -68,6 +69,8 @@ export default function AttendeeCheckin() {
   const watchIdRef = useRef(null);
   const intervalRef = useRef(null);
   const deviceId = useRef(getDeviceId());
+  // Cache the SHA-256 anon token so checkout can delete the right row
+  const anonTokenRef = useRef(localStorage.getItem('crowdiq_anon_token') || null);
 
   // Fetch real zones + event info from Supabase
   useEffect(() => {
@@ -111,7 +114,7 @@ export default function AttendeeCheckin() {
     if (now - lastSendTime < RATE_LIMIT_MS) return;
     lastSendTime = now;
 
-    // Step 1: Kalman-smooth the raw GPS (reduces ±5m noise to ~±1m)
+    // Step 1: Kalman-smooth the raw GPS
     const smoothed = smoothGPS(lat, lng, acc);
 
     // Step 2: Detect zone using smoothed coordinates
@@ -119,8 +122,14 @@ export default function AttendeeCheckin() {
     setCurrentZone(zone);
 
     try {
-      // Step 3: Anonymize device ID (SHA-256 hash — zero PII stored)
+      // Step 3: Anonymize device ID (SHA-256 hash)
       const anonToken = await hashDeviceId(deviceId.current);
+
+      // Cache the token so checkout() can delete the correct row
+      if (!anonTokenRef.current) {
+        anonTokenRef.current = anonToken;
+        localStorage.setItem('crowdiq_anon_token', anonToken);
+      }
 
       await upsertLocation({
         deviceId: anonToken,
@@ -210,10 +219,8 @@ export default function AttendeeCheckin() {
     // Clean up Android bridge listener OR browser watch
     if (watchIdRef.current !== null) {
       if (typeof watchIdRef.current === 'function') {
-        // Android bridge: remove event listener
         window.removeEventListener('crowdiq-gps', watchIdRef.current);
       } else {
-        // Browser: clear geolocation watch
         navigator.geolocation.clearWatch(watchIdRef.current);
       }
       watchIdRef.current = null;
@@ -223,7 +230,16 @@ export default function AttendeeCheckin() {
       intervalRef.current = null;
     }
     try {
-      await removeLocation(deviceId.current);
+      // Use the cached SHA-256 token (same one stored in DB)
+      // Fallback: recompute it if not cached
+      let token = anonTokenRef.current;
+      if (!token) {
+        token = await hashDeviceId(deviceId.current);
+      }
+      await removeLocation(token);
+      // Clear cached token on checkout
+      localStorage.removeItem('crowdiq_anon_token');
+      anonTokenRef.current = null;
     } catch (e) {
       console.error('Checkout error:', e);
     }

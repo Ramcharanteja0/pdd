@@ -74,6 +74,7 @@ export default function Heatmap({ sidebarOpen, setSidebarOpen }) {
   const [attendeeCounts, setAttendeeCounts] = useState({});
   const [selectedZone, setSelectedZone] = useState(null);
   const previousPositions = useRef([]);
+  const flowVectorsRef = useRef([]); // use ref to avoid stale closure in fetchAndComputeH3
 
   // Fetch raw GPS data and compute H3 density
   const fetchAndComputeH3 = useCallback(async () => {
@@ -120,13 +121,14 @@ export default function Heatmap({ sidebarOpen, setSidebarOpen }) {
         }));
         if (previousPositions.current.length > 0) {
           const vectors = h3Utils.computeFlowVectors(currentPositions, previousPositions.current);
+          flowVectorsRef.current = vectors;
           setFlowVectors(vectors);
         }
         previousPositions.current = currentPositions;
 
-        // Check surge conditions
+        // Check surge conditions using ref (no stale closure)
         if (surgeDetector) {
-          const alerts = surgeDetector.checkSurgeConditions(densityMap, flowVectors);
+          const alerts = surgeDetector.checkSurgeConditions(densityMap, flowVectorsRef.current);
           setSurgeAlerts(alerts);
           if (alerts.length > 0) {
             surgeDetector.publishSurgeAlerts(alerts).catch(console.warn);
@@ -136,7 +138,7 @@ export default function Heatmap({ sidebarOpen, setSidebarOpen }) {
     } catch (err) {
       console.warn('H3 computation error:', err);
     }
-  }, [flowVectors]);
+  }, []); // no flowVectors dependency — use ref instead to avoid infinite loop
 
   useEffect(() => {
     async function init() {

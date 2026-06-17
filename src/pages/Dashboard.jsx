@@ -97,19 +97,23 @@ export default function Dashboard({ sidebarOpen, setSidebarOpen }) {
       })
       .subscribe();
 
-    // Refresh tracked count every 30s
-    const interval = setInterval(async () => {
-      try {
-        const attendees = await fetchAttendeeLocations();
-        setTrackedCount((attendees || []).length);
-      } catch (e) {}
-    }, 30000);
+    // Realtime: update tracked count instantly when anyone checks in/out
+    const attendeeChannel = supabase
+      .channel('dashboard-attendees')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'attendee_locations' }, async () => {
+        try {
+          const attendees = await fetchAttendeeLocations();
+          setTrackedCount((attendees || []).length);
+          setLastRefreshed(new Date());
+        } catch (e) {}
+      })
+      .subscribe();
 
     return () => {
       supabase.removeChannel(zonesChannel);
       supabase.removeChannel(alertsChannel);
       supabase.removeChannel(staffChannel);
-      clearInterval(interval);
+      supabase.removeChannel(attendeeChannel);
     };
   }, [loadData]);
 
