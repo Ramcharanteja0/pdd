@@ -3,7 +3,7 @@ import { Users, AlertTriangle, TrendingUp, TrendingDown, Activity, Zap, Shield, 
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import Topbar from '../components/Topbar';
 import { getDensityLevel, getDensityColor } from '../data/mockData';
-import { fetchZones, fetchAlerts, fetchPredictions, fetchStaff, fetchEventInfo, buildCrowdTimeline, fetchAttendeeLocations } from '../lib/supabaseService';
+import { fetchZones, fetchAlerts, fetchStaff, fetchEventInfo, buildCrowdTimeline, fetchAttendeeLocations, generateLivePredictions, syncZoneDensityFromGPS } from '../lib/supabaseService';
 import { supabase } from '../lib/supabase';
 
 const CustomTooltip = ({ active, payload, label }) => {
@@ -31,10 +31,13 @@ export default function Dashboard({ sidebarOpen, setSidebarOpen }) {
 
   const loadData = useCallback(async () => {
     try {
+      // Sync GPS counts to zone density first
+      await syncZoneDensityFromGPS();
+
       const [zonesData, alertsData, predictionsData, staffData, evtInfo, timeline] = await Promise.all([
         fetchZones(),
         fetchAlerts(),
-        fetchPredictions(),
+        generateLivePredictions(),
         fetchStaff(),
         fetchEventInfo(),
         buildCrowdTimeline(),

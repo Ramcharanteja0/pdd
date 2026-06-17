@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Zap, AlertTriangle, CheckCircle, ShieldAlert, Terminal, Sparkles } from 'lucide-react';
 import { RadarChart, Radar, PolarGrid, PolarAngleAxis, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
 import Topbar from '../components/Topbar';
-import { fetchPredictions, fetchAutomatedActions, logAutomatedAction, fetchZoneDensitySnapshot, fetchRollingPrediction } from '../lib/supabaseService';
+import { generateLivePredictions, fetchAutomatedActions, logAutomatedAction, fetchZoneDensitySnapshot, fetchRollingPrediction, syncZoneDensityFromGPS } from '../lib/supabaseService';
 import { supabase } from '../lib/supabase';
 
 const RISK_CONFIG = {
@@ -22,8 +22,11 @@ export default function Predictions({ sidebarOpen, setSidebarOpen }) {
 
   const loadData = useCallback(async () => {
     try {
+      // Sync GPS → zone density first, then generate predictions from real data
+      await syncZoneDensityFromGPS();
+
       const [preds, acts, snapshot] = await Promise.all([
-        fetchPredictions(),
+        generateLivePredictions(),
         fetchAutomatedActions(),
         fetchZoneDensitySnapshot(),
       ]);
@@ -91,7 +94,8 @@ export default function Predictions({ sidebarOpen, setSidebarOpen }) {
 
     const predsChannel = supabase
       .channel('live-predictions')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'predictions' }, () => {
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'zones' }, () => {
+        // Re-generate predictions when zone density changes
         loadData();
       })
       .subscribe();

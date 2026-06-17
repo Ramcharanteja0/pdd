@@ -284,34 +284,162 @@ export async function fetchEventInfo() {
 }
 
 // ── CROWD TIMELINE (built from real GPS data) ─────────────
+// Uses BOTH created_at (first check-in) AND updated_at (last ping) to build
+// a richer timeline. Also fills in zero-count hours for a proper line graph.
 export async function buildCrowdTimeline() {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
+  const now = new Date();
+  const currentHour = now.getHours();
+
+  // Get all attendee rows active today (by either created_at or updated_at)
   const { data, error } = await supabase
     .from('attendee_locations')
-    .select('created_at, zone_id, zone_name')
-    .gte('created_at', today.toISOString())
-    .eq('event_id', 'current')
-    .order('created_at', { ascending: true });
+    .select('created_at, updated_at, zone_id, zone_name')
+    .or(`created_at.gte.${today.toISOString()},updated_at.gte.${today.toISOString()}`)
+    .eq('event_id', 'current');
 
-  if (error || !data || data.length === 0) return [];
-
-  // Group by hour
+  // Build hourly bins from 08:00 to current hour
+  const startHour = 8;
   const hourMap = {};
-  data.forEach(row => {
-    const dt = new Date(row.created_at);
-    const hourKey = `${String(dt.getHours()).padStart(2, '0')}:00`;
-    if (!hourMap[hourKey]) hourMap[hourKey] = { time: hourKey, attendees: 0, zones: {} };
-    hourMap[hourKey].attendees++;
-    const zn = row.zone_name || 'Outside';
-    hourMap[hourKey].zones[zn] = (hourMap[hourKey].zones[zn] || 0) + 1;
-  });
+  for (let h = startHour; h <= currentHour; h++) {
+    const key = `${String(h).padStart(2, '0')}:00`;
+    hourMap[key] = { time: key, attendees: 0, checkins: 0, active: 0 };
+  }
+
+  if (!error && data && data.length > 0) {
+    data.forEach(row => {
+      // Count check-in hour (created_at)
+      const createdHour = new Date(row.created_at).getHours();
+      const createdKey = `${String(createdHour).padStart(2, '0')}:00`;
+      if (hourMap[createdKey]) {
+        hourMap[createdKey].checkins++;
+        hourMap[createdKey].attendees++;
+      }
+
+      // Count active hour (updated_at — last GPS ping)
+      if (row.updated_at) {
+        const updatedHour = new Date(row.updated_at).getHours();
+        const updatedKey = `${String(updatedHour).padStart(2, '0')}:00`;
+        if (hourMap[updatedKey] && updatedKey !== createdKey) {
+          hourMap[updatedKey].active++;
+          hourMap[updatedKey].attendees++;
+        }
+      }
+    });
+  }
 
   return Object.values(hourMap).sort((a, b) => a.time.localeCompare(b.time));
 }
 
+// ── SYNC ZONE DENSITY FROM GPS ────────────────────────────
+// Writes real GPS attendee counts back to zones.density so dashboard/analytics
+// zone bars and pie charts show actual data instead of 0%.
+export async function syncZoneDensityFromGPS() {
+  try {
+    const tenMinAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+    const [{ data: locations }, { data: zones }] = await Promise.all([
+      supabase.from('attendee_locations')
+        .select('zone_id')
+        .gte('updated_at', tenMinAgo)
+        .eq('event_id', 'current'),
+      supabase.from('zones').select('id, capacity'),
+    ]);
+    if (!zones || zones.length === 0) return;
+
+    // Count attendees per zone
+    const counts = {};
+    (locations || []).forEach(loc => {
+      if (loc.zone_id) counts[loc.zone_id] = (counts[loc.zone_id] || 0) + 1;
+    });
+
+    // Update each zone's density as percentage of capacity
+    const updates = zones.map(z => {
+      const count = counts[z.id] || 0;
+      const density = z.capacity > 0 ? Math.min(100, Math.round((count / z.capacity) * 100)) : 0;
+      return supabase.from('zones').update({ density }).eq('id', z.id);
+    });
+    await Promise.all(updates);
+  } catch (err) {
+    console.warn('syncZoneDensityFromGPS error:', err.message);
+  }
+}
+
+// ── LIVE AI PREDICTIONS (generated from real zone data) ───
+// Instead of reading stale seed data from the predictions table,
+// this generates predictions dynamically from current zone state.
+export async function generateLivePredictions() {
+  try {
+    const { data: zones } = await supabase.from('zones').select('*').order('density', { ascending: false });
+    if (!zones || zones.length === 0) return [];
+
+    const predictions = [];
+    const now = new Date();
+
+    zones.forEach(zone => {
+      const density = zone.density || 0;
+      const count = zone.capacity > 0 ? Math.round(zone.capacity * density / 100) : 0;
+      const remaining = (zone.capacity || 0) - count;
+
+      if (density >= 80) {
+        predictions.push({
+          id: `live-${zone.id}-critical`,
+          zone: zone.name,
+          risk: 'HIGH',
+          prediction: `Zone at ${density}% capacity (${count}/${zone.capacity}). Risk of overcrowding within 15 minutes if inflow continues.`,
+          action: `Deploy ${Math.ceil(count * 0.05)} staff to control entry. Open overflow areas and redirect foot traffic.`,
+          confidence: Math.min(97, 70 + Math.round(density * 0.3)),
+          created_at: now.toISOString(),
+        });
+      } else if (density >= 55) {
+        predictions.push({
+          id: `live-${zone.id}-moderate`,
+          zone: zone.name,
+          risk: 'MEDIUM',
+          prediction: `Zone reaching ${density}% capacity (${count}/${zone.capacity}). Approaching crowd threshold — monitor closely.`,
+          action: `Prepare ${Math.ceil(count * 0.03)} additional staff. Consider activating queue management.`,
+          confidence: Math.min(90, 55 + Math.round(density * 0.25)),
+          created_at: now.toISOString(),
+        });
+      } else if (density >= 30) {
+        predictions.push({
+          id: `live-${zone.id}-normal`,
+          zone: zone.name,
+          risk: 'LOW',
+          prediction: `Zone at ${density}% capacity (${count}/${zone.capacity}). Comfortable occupancy with room for ${remaining} more attendees.`,
+          action: 'No action needed. Standard monitoring continues.',
+          confidence: Math.min(95, 80 + Math.round(density * 0.1)),
+          created_at: now.toISOString(),
+        });
+      }
+    });
+
+    // If no zones have meaningful density, show a status prediction
+    if (predictions.length === 0) {
+      predictions.push({
+        id: 'live-status',
+        zone: 'All Zones',
+        risk: 'LOW',
+        prediction: `All ${zones.length} zones below 30% capacity. No crowd concerns detected.`,
+        action: 'Continue standard monitoring. System will auto-alert at 55% threshold.',
+        confidence: 95,
+        created_at: now.toISOString(),
+      });
+    }
+
+    return predictions.slice(0, 5); // Top 5
+  } catch (err) {
+    console.warn('generateLivePredictions error:', err.message);
+    return [];
+  }
+}
+
 // ── ZONE DENSITY SNAPSHOT (for radar/analytics) ───────────
+// First syncs GPS data → zone density, then returns snapshot
 export async function fetchZoneDensitySnapshot() {
+  // Sync real GPS counts to zones.density first
+  await syncZoneDensityFromGPS();
+
   const { data: zones } = await supabase.from('zones').select('id, name, density, capacity');
   return (zones || []).map(z => ({
     zone: z.name,

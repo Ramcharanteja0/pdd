@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { BarChart2, TrendingUp, Users, Clock, Award, Download, ShieldCheck, Database } from 'lucide-react';
 import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
 import Topbar from '../components/Topbar';
-import { fetchIncidents, fetchDispatchLog, fetchStaff, fetchVendors, fetchZoneDensitySnapshot, buildCrowdTimeline } from '../lib/supabaseService';
+import { fetchIncidents, fetchDispatchLog, fetchStaff, fetchVendors, fetchZoneDensitySnapshot, buildCrowdTimeline, syncZoneDensityFromGPS } from '../lib/supabaseService';
 
 const COLORS = ['#6366F1', '#8B5CF6', '#F59E0B', '#10B981', '#EF4444', '#EC4899'];
 
@@ -31,6 +31,9 @@ export default function Analytics({ sidebarOpen, setSidebarOpen }) {
   useEffect(() => {
     async function loadData() {
       try {
+        // Sync real GPS counts to zone densities first
+        await syncZoneDensityFromGPS();
+
         const [incData, dispData, staffData, vendData, zoneSnapshot, timeline] = await Promise.all([
           fetchIncidents(),
           fetchDispatchLog(),
