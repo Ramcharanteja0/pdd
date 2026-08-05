@@ -1,6 +1,10 @@
-const ExcelJS = require('exceljs');
-const fs = require('fs');
-const path = require('path');
+import ExcelJS from 'exceljs';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const findings = [
   { id: 'API-001', component: 'index.js', risk: 'Low', description: 'CORS policy uses wildcard (*) for origins.' },

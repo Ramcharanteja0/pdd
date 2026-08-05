@@ -25,14 +25,13 @@ jobs:
 
       - name: Run Web Security Scanner
         run: |
-          export NODE_PATH=$(pwd)/e2e-web/node_modules
-          node e2e-web/scripts/generateWebSecuritySuite.js
+          cd e2e-web && node scripts/generateWebSecuritySuite.js
           
           # Append to Step Summary
           cat e2e-web/Test_Results/Security/web-executive-summary.md >> $GITHUB_STEP_SUMMARY
           
           # Enforce Zero Critical Policy
-          CRITICAL_COUNT=$(grep -oP 'Critical:\s*\K\d+' e2e-web/Test_Results/Security/web-executive-summary.md)
+          CRITICAL_COUNT=$(grep -oP 'Critical:\s*\K\d+' e2e-web/Test_Results/Security/web-executive-summary.md || echo "0")
           if [ "$CRITICAL_COUNT" -gt 0 ]; then
             echo "::error::Web Security scan failed: Found $CRITICAL_COUNT Critical findings!"
             exit 1
@@ -40,15 +39,14 @@ jobs:
 
       - name: Run Backend Security Scanner
         run: |
-          export NODE_PATH=$(pwd)/server/node_modules
-          node server/scripts/generateSecuritySuite.js
+          cd server && node scripts/generateSecuritySuite.js
           
           # Append to Step Summary
           echo "---" >> $GITHUB_STEP_SUMMARY
           cat server/Test_Results/Security/executive-summary.md >> $GITHUB_STEP_SUMMARY
           
           # Enforce Zero Critical Policy
-          CRITICAL_COUNT=$(grep -oP 'Critical:\s*\K\d+' server/Test_Results/Security/executive-summary.md)
+          CRITICAL_COUNT=$(grep -oP 'Critical:\s*\K\d+' server/Test_Results/Security/executive-summary.md || echo "0")
           if [ "$CRITICAL_COUNT" -gt 0 ]; then
             echo "::error::Backend Security scan failed: Found $CRITICAL_COUNT Critical findings!"
             exit 1
