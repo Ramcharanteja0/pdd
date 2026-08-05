@@ -1,0 +1,76 @@
+name: Web E2E Test & Deploy
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+# Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  test-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Frontend Dependencies
+        run: npm ci
+
+      - name: Build Frontend (Vite)
+        run: npm run build
+
+      - name: Start Background Vite Preview Server
+        run: |
+          npx vite preview --port 5173 --host 127.0.0.1 --base /CrowdIQ/ &
+          sleep 4
+          curl -s http://127.0.0.1:5173 > /dev/null || (echo "Server failed to start" && exit 1)
+          echo "TEST_BASE_URL=http://127.0.0.1:5173" >> $GITHUB_ENV
+
+      - name: Install E2E Dependencies
+        working-directory: ./e2e-web
+        run: npm install
+
+      - name: Run Web E2E Master Suite (1,100 Tests)
+        working-directory: ./e2e-web
+        run: npm test
+
+      - name: Inject HTML Report into Deployable Dist
+        run: |
+          mkdir -p dist/reports/latest
+          mkdir -p dist/reports/history/build-${{ github.run_number }}
+          cp e2e-web/Test_Results/HTML/execution-report.html dist/reports/latest/execution-report.html
+          cp e2e-web/Test_Results/HTML/execution-report.html dist/reports/history/build-${{ github.run_number }}/execution-report.html
+
+      - name: Generate Step Summary
+        run: |
+          echo "# 🧪 Web E2E Testing Summary" >> $GITHUB_STEP_SUMMARY
+          echo "Successfully executed 1,100 Web E2E assertions." >> $GITHUB_STEP_SUMMARY
+          echo "Reports are attached to the GitHub Pages deployment under \`/reports/latest/execution-report.html\`." >> $GITHUB_STEP_SUMMARY
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: './dist'
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

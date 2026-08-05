@@ -1,0 +1,88 @@
+name: Android E2E Appium Tests
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+# Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages-android"
+  cancel-in-progress: false
+
+jobs:
+  test-android:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup Java
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Install Appium & Dependencies
+        working-directory: ./e2e-mobile
+        run: |
+          npm install
+          npx appium driver install uiautomator2
+
+      - name: Build Android Debug APK
+        working-directory: ./android
+        run: |
+          chmod +x ./gradlew
+          ./gradlew assembleDebug --no-daemon
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Run Appium Tests in Emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 29
+          target: default
+          arch: x86
+          profile: Nexus 6
+          script: |
+            cd e2e-mobile
+            chmod +x scripts/ci_run_tests.sh
+            ./scripts/ci_run_tests.sh ../android/app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Inject HTML Report into Deployable Dist (Appium)
+        run: |
+          mkdir -p dist-android/reports/latest-mobile
+          mkdir -p dist-android/reports/history-mobile/build-${{ github.run_number }}
+          cp e2e-mobile/Test_Results/HTML/execution-report.html dist-android/reports/latest-mobile/execution-report.html
+          cp e2e-mobile/Test_Results/HTML/execution-report.html dist-android/reports/history-mobile/build-${{ github.run_number }}/execution-report.html
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: './dist-android'
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+      - name: Generate Step Summary
+        run: |
+          cat e2e-mobile/Test_Results/summary.md >> $GITHUB_STEP_SUMMARY

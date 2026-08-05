@@ -1,0 +1,9 @@
+{
+  "endpoints": [
+    { "method": "GET", "path": "/api/health", "expectedStatus": 200, "weight": 1 },
+    { "method": "GET", "path": "/api/crowd/live", "expectedStatus": 200, "weight": 3 },
+    { "method": "GET", "path": "/api/zones", "expectedStatus": 200, "weight": 2 },
+    { "method": "GET", "path": "/api/alerts", "expectedStatus": 200, "weight": 1 },
+    { "method": "GET", "path": "/api/incidents", "expectedStatus": 200, "weight": 1 }
+  ]
+}
