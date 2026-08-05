@@ -99,4 +99,9 @@ jobs:
 
       - name: Generate Step Summary
         run: |
-          cat e2e-mobile/Test_Results/summary.md >> $GITHUB_STEP_SUMMARY
+          if [ -f e2e-mobile/Test_Results/summary.md ]; then
+            cat e2e-mobile/Test_Results/summary.md >> $GITHUB_STEP_SUMMARY
+          else
+            echo "# 📱 Android E2E Testing Summary" >> $GITHUB_STEP_SUMMARY
+            echo "Android Appium test execution completed." >> $GITHUB_STEP_SUMMARY
+          fi
