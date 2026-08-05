@@ -69,7 +69,7 @@ export function AuthProvider({ children }) {
     // Use the actual web origin for the redirect URL.
     const origin = window.location.origin;
     const isCapacitor = origin.includes('localhost') || origin.includes('capacitor');
-    const redirectBase = isCapacitor ? 'https://pdd-ramcharanteja0s-projects.vercel.app' : origin;
+    const redirectBase = isCapacitor ? 'https://pdd-tawny.vercel.app' : origin;
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
       redirectTo: `${redirectBase}/reset-password`,
     });
