@@ -65,11 +65,9 @@ export function AuthProvider({ children }) {
   };
 
   const resetPassword = async (email) => {
-    // In Capacitor, window.location.origin is 'https://localhost' which won't work for email redirects.
-    // Use the actual web origin for the redirect URL.
     const origin = window.location.origin;
-    const isCapacitor = origin.includes('localhost') || origin.includes('capacitor');
-    const redirectBase = isCapacitor ? 'https://pdd-tawny.vercel.app' : origin;
+    const envRedirectUrl = import.meta.env.VITE_PASSWORD_RESET_REDIRECT_URL;
+    const redirectBase = envRedirectUrl?.trim() || origin;
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
       redirectTo: `${redirectBase}/reset-password`,
     });
