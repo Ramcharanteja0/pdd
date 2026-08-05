@@ -77,8 +77,10 @@ jobs:
         run: |
           mkdir -p dist-android/reports/latest-mobile
           mkdir -p dist-android/reports/history-mobile/build-${{ github.run_number }}
-          cp e2e-mobile/Test_Results/HTML/execution-report.html dist-android/reports/latest-mobile/execution-report.html
-          cp e2e-mobile/Test_Results/HTML/execution-report.html dist-android/reports/history-mobile/build-${{ github.run_number }}/execution-report.html
+          if [ -f e2e-mobile/Test_Results/HTML/execution-report.html ]; then
+            cp e2e-mobile/Test_Results/HTML/execution-report.html dist-android/reports/latest-mobile/execution-report.html
+            cp e2e-mobile/Test_Results/HTML/execution-report.html dist-android/reports/history-mobile/build-${{ github.run_number }}/execution-report.html
+          fi
 
       - name: Setup Pages
         uses: actions/configure-pages@v4
