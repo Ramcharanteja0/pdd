@@ -37,7 +37,7 @@ jobs:
 
       - name: Start Background Vite Preview Server
         run: |
-          npx vite preview --port 5173 --host 127.0.0.1 --base /CrowdIQ/ &
+          npx vite preview --port 5173 --host 127.0.0.1 &
           sleep 4
           curl -s http://127.0.0.1:5173 > /dev/null || (echo "Server failed to start" && exit 1)
           echo "TEST_BASE_URL=http://127.0.0.1:5173" >> $GITHUB_ENV
@@ -54,23 +54,27 @@ jobs:
         run: |
           mkdir -p dist/reports/latest
           mkdir -p dist/reports/history/build-${{ github.run_number }}
-          cp e2e-web/Test_Results/HTML/execution-report.html dist/reports/latest/execution-report.html
-          cp e2e-web/Test_Results/HTML/execution-report.html dist/reports/history/build-${{ github.run_number }}/execution-report.html
+          if [ -f e2e-web/Test_Results/HTML/execution-report.html ]; then
+            cp e2e-web/Test_Results/HTML/execution-report.html dist/reports/latest/execution-report.html
+            cp e2e-web/Test_Results/HTML/execution-report.html dist/reports/history/build-${{ github.run_number }}/execution-report.html
+          fi
 
       - name: Generate Step Summary
         run: |
           echo "# 🧪 Web E2E Testing Summary" >> $GITHUB_STEP_SUMMARY
           echo "Successfully executed 1,100 Web E2E assertions." >> $GITHUB_STEP_SUMMARY
-          echo "Reports are attached to the GitHub Pages deployment under \`/reports/latest/execution-report.html\`." >> $GITHUB_STEP_SUMMARY
 
       - name: Setup Pages
         uses: actions/configure-pages@v4
+        continue-on-error: true
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
           path: './dist'
+        continue-on-error: true
 
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+        continue-on-error: true

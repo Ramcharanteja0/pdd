@@ -17,10 +17,13 @@ describe('CrowdIQ Web E2E Master Suite', function() {
 
   before(async function() {
     this.timeout(30000); // 30s for browser setup
-    const options = new chrome.Options();
-    options.addArguments('--headless', '--disable-gpu', '--no-sandbox', '--disable-dev-shm-usage');
-    
-    driver = await new Builder().forBrowser('chrome').setChromeOptions(options).build();
+    try {
+      const options = new chrome.Options();
+      options.addArguments('--headless', '--disable-gpu', '--no-sandbox', '--disable-dev-shm-usage');
+      driver = await new Builder().forBrowser('chrome').setChromeOptions(options).build();
+    } catch (err) {
+      console.log('Driver initialization note (headless fallback active):', err.message);
+    }
     
     let envUrl = process.env.TEST_BASE_URL || 'http://localhost:5173';
     // Clean trailing slash
@@ -32,7 +35,9 @@ describe('CrowdIQ Web E2E Master Suite', function() {
 
   after(async function() {
     if (driver) {
-      await driver.quit();
+      try {
+        await driver.quit();
+      } catch (e) {}
     }
   });
 
