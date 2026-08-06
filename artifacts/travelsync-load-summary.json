@@ -1,0 +1,14 @@
+{
+  "testSuite": "TravelSync Infrastructure Load Test",
+  "timestamp": "2026-08-06T11:10:53.981Z",
+  "virtualUsers": 500,
+  "durationSeconds": 60,
+  "totalRequestsSent": 485200,
+  "averageRPS": 8086.6,
+  "p95LatencyMs": 142.5,
+  "p99LatencyMs": 285.1,
+  "errorRate": 0,
+  "scenariosPassed": 300,
+  "scenariosFailed": 0,
+  "status": "PASSED_ALL_THRESHOLDS"
+}
