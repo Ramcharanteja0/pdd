@@ -1,8 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, ActivityIndicator, Text, StyleSheet } from 'react-native';
-import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
-import { NavigationContainer } from '@react-navigation/native';
-import { StatusBar } from 'expo-status-bar';
+import { View, ActivityIndicator, Text, StyleSheet, SafeAreaView, StatusBar } from 'react-native';
 import { supabase } from './src/services/supabase';
 
 import LoginScreen from './src/screens/LoginScreen';
@@ -20,7 +17,7 @@ export default function App() {
         const { data } = await supabase.auth.getSession();
         if (mounted) setUser(data?.session?.user ?? null);
       } catch (err) {
-        console.warn('Auth init note:', err);
+        console.warn('Auth note:', err);
       } finally {
         if (mounted) setInitializing(false);
       }
@@ -41,6 +38,7 @@ export default function App() {
   if (initializing) {
     return (
       <View style={styles.loadingContainer}>
+        <StatusBar barStyle="light-content" backgroundColor="#0F172A" />
         <ActivityIndicator size="large" color="#6366F1" />
         <Text style={styles.loadingText}>Starting CrowdIQ...</Text>
       </View>
@@ -48,27 +46,19 @@ export default function App() {
   }
 
   return (
-    <SafeAreaProvider style={styles.provider}>
-      <StatusBar style="light" backgroundColor="#0F172A" />
-      <SafeAreaView style={styles.safeArea}>
-        {user ? (
-          <NavigationContainer>
-            <AppNavigator />
-          </NavigationContainer>
-        ) : (
-          <LoginScreen onLoginSuccess={(u) => setUser(u)} />
-        )}
-      </SafeAreaView>
-    </SafeAreaProvider>
+    <SafeAreaView style={styles.container}>
+      <StatusBar barStyle="light-content" backgroundColor="#0F172A" />
+      {user ? (
+        <AppNavigator user={user} onLogout={() => { supabase.auth.signOut(); setUser(null); }} />
+      ) : (
+        <LoginScreen onLoginSuccess={(u) => setUser(u)} />
+      )}
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  provider: {
-    flex: 1,
-    backgroundColor: '#0F172A',
-  },
-  safeArea: {
+  container: {
     flex: 1,
     backgroundColor: '#0F172A',
   },

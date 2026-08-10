@@ -41,7 +41,7 @@ export default function LoginScreen({ onLoginSuccess }) {
     setTimeout(() => {
       onLoginSuccess({ id: 'demo-123', email: 'demo@crowdiq.ai', user_metadata: { name: 'Demo Manager' } });
       setLoading(false);
-    }, 600);
+    }, 400);
   };
 
   return (
@@ -51,7 +51,7 @@ export default function LoginScreen({ onLoginSuccess }) {
     >
       <ScrollView contentContainerStyle={styles.scrollContent}>
         {/* Brand Header */}
-        <View className="brand" style={styles.brandContainer}>
+        <View style={styles.brandContainer}>
           <View style={styles.logoBadge}>
             <Text style={styles.logoSymbol}>⚡</Text>
           </View>
@@ -99,6 +99,7 @@ export default function LoginScreen({ onLoginSuccess }) {
             style={styles.primaryButton}
             onPress={handleLogin}
             disabled={loading}
+            activeOpacity={0.8}
           >
             {loading ? (
               <ActivityIndicator color="#FFFFFF" />
@@ -117,6 +118,7 @@ export default function LoginScreen({ onLoginSuccess }) {
             style={styles.demoButton}
             onPress={handleDemoLogin}
             disabled={loading}
+            activeOpacity={0.8}
           >
             <Text style={styles.demoButtonText}>🚀 Launch Demo Dashboard</Text>
           </TouchableOpacity>
@@ -134,17 +136,17 @@ const styles = StyleSheet.create({
   scrollContent: {
     flexGrow: 1,
     justifyContent: 'center',
-    padding: 24,
+    padding: 20,
   },
   brandContainer: {
     alignItems: 'center',
-    marginBottom: 32,
+    marginBottom: 28,
   },
   logoBadge: {
-    width: 60,
-    height: 60,
-    borderRadius: 18,
-    backgroundColor: 'rgba(99, 102, 241, 0.2)',
+    width: 54,
+    height: 54,
+    borderRadius: 16,
+    backgroundColor: 'rgba(99, 102, 241, 0.25)',
     borderColor: 'rgba(99, 102, 241, 0.4)',
     borderWidth: 1,
     alignItems: 'center',
@@ -152,48 +154,47 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   logoSymbol: {
-    fontSize: 28,
+    fontSize: 26,
   },
   brandTitle: {
-    fontFamily: Platform.OS === 'ios' ? 'System' : 'sans-serif-medium',
-    fontSize: 32,
+    fontSize: 30,
     fontWeight: '900',
     color: '#FFFFFF',
     letterSpacing: -0.5,
   },
   brandSubtitle: {
-    fontSize: 14,
+    fontSize: 13,
     color: '#94A3B8',
     marginTop: 4,
   },
   card: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 24,
-    padding: 28,
+    borderRadius: 22,
+    padding: 24,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
+    shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.25,
-    shadowRadius: 20,
-    elevation: 8,
+    shadowRadius: 16,
+    elevation: 6,
   },
   cardTitle: {
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: '800',
     color: '#0F172A',
     marginBottom: 4,
   },
   cardSubtitle: {
-    fontSize: 14,
+    fontSize: 13,
     color: '#64748B',
-    marginBottom: 24,
+    marginBottom: 20,
   },
   errorBanner: {
     backgroundColor: '#FEE2E2',
     borderColor: '#EF4444',
     borderLeftWidth: 4,
-    padding: 12,
+    padding: 10,
     borderRadius: 8,
-    marginBottom: 16,
+    marginBottom: 14,
   },
   errorText: {
     color: '#991B1B',
@@ -201,7 +202,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   formGroup: {
-    marginBottom: 16,
+    marginBottom: 14,
   },
   label: {
     fontSize: 13,
@@ -213,33 +214,33 @@ const styles = StyleSheet.create({
     backgroundColor: '#F8FAFC',
     borderColor: '#E2E8F0',
     borderWidth: 1.5,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
     fontSize: 15,
     color: '#0F172A',
   },
   primaryButton: {
     backgroundColor: '#4F46E5',
-    borderRadius: 12,
-    paddingVertical: 14,
+    borderRadius: 10,
+    paddingVertical: 13,
     alignItems: 'center',
-    marginTop: 8,
+    marginTop: 6,
     shadowColor: '#4F46E5',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 4,
+    shadowRadius: 6,
+    elevation: 3,
   },
   primaryButtonText: {
     color: '#FFFFFF',
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '700',
   },
   dividerRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginVertical: 20,
+    marginVertical: 18,
   },
   dividerLine: {
     flex: 1,
@@ -247,16 +248,16 @@ const styles = StyleSheet.create({
     backgroundColor: '#E2E8F0',
   },
   dividerText: {
-    marginHorizontal: 12,
-    fontSize: 13,
+    marginHorizontal: 10,
+    fontSize: 12,
     color: '#94A3B8',
   },
   demoButton: {
     backgroundColor: '#F1F5F9',
     borderColor: '#CBD5E1',
     borderWidth: 1,
-    borderRadius: 12,
-    paddingVertical: 13,
+    borderRadius: 10,
+    paddingVertical: 12,
     alignItems: 'center',
   },
   demoButtonText: {
