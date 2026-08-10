@@ -6,13 +6,23 @@ import {
   ScrollView,
   TouchableOpacity,
   Alert,
-  ActivityIndicator,
   Dimensions,
   Platform,
 } from 'react-native';
-import MapView, { Marker, Circle, Polygon, Callout } from 'react-native-maps';
 import * as Location from 'expo-location';
 import { supabase } from '../services/supabase';
+
+// Safely import react-native-maps if supported
+let MapView, Marker, Circle, Polygon;
+try {
+  const Maps = require('react-native-maps');
+  MapView = Maps.default;
+  Marker = Maps.Marker;
+  Circle = Maps.Circle;
+  Polygon = Maps.Polygon;
+} catch (e) {
+  // Graceful fallback if native maps module is missing or incompatible in environment
+}
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -75,10 +85,8 @@ const VENUE_ZONES = [
   },
 ];
 
-// Default venue center (Kurnool area)
 const VENUE_CENTER = { latitude: 15.8281, longitude: 78.0373 };
 
-// ── Density helpers ────────────────────────────────────────
 function getDensityColor(pct) {
   if (pct >= 80) return '#EF4444';
   if (pct >= 50) return '#F59E0B';
@@ -93,30 +101,18 @@ function getDensityLabel(pct) {
   return 'SAFE';
 }
 
-function getDensityEmoji(pct) {
-  if (pct >= 80) return '🔴';
-  if (pct >= 50) return '🟡';
-  if (pct >= 30) return '🔵';
-  return '🟢';
-}
-
 export default function MapScreen() {
   const mapRef = useRef(null);
   const [userLocation, setUserLocation] = useState(null);
-  const [locationLoading, setLocationLoading] = useState(true);
-  const [locationError, setLocationError] = useState(null);
   const [zones, setZones] = useState(VENUE_ZONES.map(z => ({ ...z, current_count: 3500, max_capacity: 10000, density: 45, trend: 'stable' })));
   const [selectedZone, setSelectedZone] = useState(null);
   const [attendeeCount, setAttendeeCount] = useState(17500);
-  const [lastUpdated, setLastUpdated] = useState(new Date());
   const [mapType, setMapType] = useState('standard');
-  const [showZoneOverlay, setShowZoneOverlay] = useState(true);
   const [showHeatmap, setShowHeatmap] = useState(true);
   const [trackingActive, setTrackingActive] = useState(false);
-  const [mapError, setMapError] = useState(false);
+  const [hasNativeMapError, setHasNativeMapError] = useState(false);
   const locationSubscription = useRef(null);
 
-  // ── Fetch zone density data from Supabase ────────────────
   const fetchZoneData = async () => {
     try {
       const { data, error } = await supabase.from('zones').select('*');
@@ -146,22 +142,15 @@ export default function MapScreen() {
         setZones(mock);
         setAttendeeCount(mock.reduce((s, z) => s + z.current_count, 0));
       }
-      setLastUpdated(new Date());
     } catch (err) {
-      console.warn('Zone fetch note:', err);
+      // Keep default state
     }
   };
 
-  // ── GPS Location tracking ────────────────────────────────
   const startLocationTracking = async () => {
     try {
-      setLocationLoading(true);
       const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') {
-        setLocationError('Location permission denied');
-        setLocationLoading(false);
-        return;
-      }
+      if (status !== 'granted') return;
 
       const location = await Location.getCurrentPositionAsync({
         accuracy: Location.Accuracy.Balanced,
@@ -172,7 +161,6 @@ export default function MapScreen() {
         longitude: location.coords.longitude,
         accuracy: location.coords.accuracy,
       });
-      setLocationLoading(false);
       setTrackingActive(true);
 
       locationSubscription.current = await Location.watchPositionAsync(
@@ -190,14 +178,12 @@ export default function MapScreen() {
         }
       );
     } catch (err) {
-      setLocationError('Using default venue position');
-      setLocationLoading(false);
+      // Ignore location error
     }
   };
 
-  // ── Center map on user location ──────────────────────────
   const centerOnUser = () => {
-    if (userLocation && mapRef.current) {
+    if (userLocation && mapRef.current && mapRef.current.animateToRegion) {
       mapRef.current.animateToRegion({
         latitude: userLocation.latitude,
         longitude: userLocation.longitude,
@@ -209,9 +195,8 @@ export default function MapScreen() {
     }
   };
 
-  // ── Center map on venue ──────────────────────────────────
   const centerOnVenue = () => {
-    if (mapRef.current) {
+    if (mapRef.current && mapRef.current.animateToRegion) {
       mapRef.current.animateToRegion({
         ...VENUE_CENTER,
         latitudeDelta: 0.008,
@@ -238,9 +223,11 @@ export default function MapScreen() {
     return '→';
   };
 
+  const canRenderNativeMap = MapView && !hasNativeMapError;
+
   return (
     <View style={styles.container}>
-      {/* ── Top Status Bar ─────────────────────────────── */}
+      {/* Top Header */}
       <View style={styles.topBar}>
         <View style={styles.topBarLeft}>
           <Text style={styles.topBarTitle}>Live Venue Map</Text>
@@ -251,14 +238,14 @@ export default function MapScreen() {
         <View style={styles.topBarRight}>
           <View style={[styles.livePulse, trackingActive && styles.livePulseActive]}>
             <View style={styles.liveDot} />
-            <Text style={styles.liveLabel}>{trackingActive ? 'GPS ACTIVE' : 'GPS STANDBY'}</Text>
+            <Text style={styles.liveLabel}>{trackingActive ? 'GPS ON' : 'GPS STANDBY'}</Text>
           </View>
         </View>
       </View>
 
-      {/* ── Map View ───────────────────────────────────── */}
+      {/* Map View or Interactive Grid View */}
       <View style={styles.mapContainer}>
-        {!mapError ? (
+        {canRenderNativeMap ? (
           <MapView
             ref={mapRef}
             style={styles.map}
@@ -273,16 +260,16 @@ export default function MapScreen() {
             showsCompass={true}
             rotateEnabled={true}
             pitchEnabled={true}
-            onError={() => setMapError(true)}
+            onError={() => setHasNativeMapError(true)}
           >
-            {showZoneOverlay && zones.map((zone) => {
+            {zones.map((zone) => {
               const pct = zone.density || 0;
               const fillColor = getDensityColor(pct) + '33';
               const strokeColor = getDensityColor(pct);
 
               return (
                 <React.Fragment key={zone.id}>
-                  {zone.polygon && (
+                  {zone.polygon && Polygon && (
                     <Polygon
                       coordinates={zone.polygon}
                       fillColor={fillColor}
@@ -293,7 +280,7 @@ export default function MapScreen() {
                     />
                   )}
 
-                  {showHeatmap && zone.center && (
+                  {showHeatmap && zone.center && Circle && (
                     <Circle
                       center={zone.center}
                       radius={zone.radius * Math.max(0.4, pct / 100)}
@@ -303,7 +290,7 @@ export default function MapScreen() {
                     />
                   )}
 
-                  {zone.center && (
+                  {zone.center && Marker && (
                     <Marker
                       coordinate={zone.center}
                       onPress={() => setSelectedZone(zone)}
@@ -318,26 +305,35 @@ export default function MapScreen() {
             })}
           </MapView>
         ) : (
-          /* Fallback interactive Grid View if MapView tile engine is offline */
-          <View style={styles.fallbackContainer}>
-            <Text style={styles.fallbackTitle}>🗺️ Live H3 Spatial Density Layer</Text>
-            <Text style={styles.fallbackSub}>Interactive Telemetry Active</Text>
+          /* Interactive Spatial Grid Fallback */
+          <ScrollView contentContainerStyle={styles.fallbackContainer}>
+            <Text style={styles.fallbackTitle}>🗺️ Live Venue Density Grid</Text>
+            <Text style={styles.fallbackSub}>Real-time H3 Telemetry Active</Text>
             {zones.map((zone) => (
               <TouchableOpacity
                 key={zone.id}
-                style={[styles.fallbackZoneItem, { borderColor: getDensityColor(zone.density) }]}
+                style={[styles.fallbackZoneCard, { borderLeftColor: getDensityColor(zone.density) }]}
                 onPress={() => setSelectedZone(zone)}
+                activeOpacity={0.8}
               >
-                <Text style={styles.fallbackZoneName}>{zone.name}</Text>
-                <Text style={[styles.fallbackZonePct, { color: getDensityColor(zone.density) }]}>
-                  {zone.density}% Occupancy
+                <View style={styles.fallbackRow}>
+                  <Text style={styles.fallbackName}>{zone.name}</Text>
+                  <Text style={[styles.fallbackPct, { color: getDensityColor(zone.density) }]}>
+                    {zone.density}%
+                  </Text>
+                </View>
+                <View style={styles.fallbackBarTrack}>
+                  <View style={[styles.fallbackBarFill, { width: `${zone.density}%`, backgroundColor: getDensityColor(zone.density) }]} />
+                </View>
+                <Text style={styles.fallbackSubText}>
+                  {zone.current_count?.toLocaleString()} / {zone.max_capacity?.toLocaleString()} attendees ({zone.trend})
                 </Text>
               </TouchableOpacity>
             ))}
-          </View>
+          </ScrollView>
         )}
 
-        {/* ── Floating Controls ────────────────────────── */}
+        {/* Floating Map Controls */}
         <View style={styles.floatingControls}>
           <TouchableOpacity style={styles.floatingBtn} onPress={centerOnUser}>
             <Text style={styles.floatingBtnIcon}>📍</Text>
@@ -369,7 +365,7 @@ export default function MapScreen() {
         )}
       </View>
 
-      {/* ── Bottom Zone Cards Panel ─────────────────── */}
+      {/* Bottom Zone Cards */}
       <ScrollView
         style={styles.bottomPanel}
         horizontal={true}
@@ -388,16 +384,7 @@ export default function MapScreen() {
                 isSelected && styles.zoneCardSelected,
                 { borderTopColor: getDensityColor(pct) },
               ]}
-              onPress={() => {
-                setSelectedZone(zone);
-                if (mapRef.current && zone.center) {
-                  mapRef.current.animateToRegion({
-                    ...zone.center,
-                    latitudeDelta: 0.004,
-                    longitudeDelta: 0.004,
-                  }, 600);
-                }
-              }}
+              onPress={() => setSelectedZone(zone)}
               activeOpacity={0.8}
             >
               <View style={styles.zoneCardHeader}>
@@ -437,7 +424,7 @@ export default function MapScreen() {
         })}
       </ScrollView>
 
-      {/* ── Legend Bar ──────────────────────────────── */}
+      {/* Legend */}
       <View style={styles.legendBar}>
         <View style={styles.legendItem}>
           <View style={[styles.legendDot, { backgroundColor: '#10B981' }]} />
@@ -461,10 +448,7 @@ export default function MapScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#0F172A',
-  },
+  container: { flex: 1, backgroundColor: '#0F172A' },
   topBar: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -476,16 +460,8 @@ const styles = StyleSheet.create({
     borderBottomColor: 'rgba(255,255,255,0.08)',
   },
   topBarLeft: {},
-  topBarTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: '#FFFFFF',
-  },
-  topBarSub: {
-    fontSize: 12,
-    color: '#94A3B8',
-    marginTop: 2,
-  },
+  topBarTitle: { fontSize: 18, fontWeight: '800', color: '#FFFFFF' },
+  topBarSub: { fontSize: 12, color: '#94A3B8', marginTop: 2 },
   topBarRight: {},
   livePulse: {
     flexDirection: 'row',
@@ -495,112 +471,50 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
     borderRadius: 16,
   },
-  livePulseActive: {
-    backgroundColor: 'rgba(16,185,129,0.2)',
-  },
-  liveDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#10B981',
-    marginRight: 6,
-  },
-  liveLabel: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: '#10B981',
-    letterSpacing: 0.5,
-  },
-  mapContainer: {
-    flex: 1,
-    position: 'relative',
-  },
-  map: {
-    flex: 1,
-  },
-  fallbackContainer: {
-    flex: 1,
-    backgroundColor: '#0F172A',
-    padding: 20,
-    justifyContent: 'center',
-  },
-  fallbackTitle: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: '#FFFFFF',
-    marginBottom: 4,
-  },
-  fallbackSub: {
-    fontSize: 13,
-    color: '#94A3B8',
-    marginBottom: 16,
-  },
-  fallbackZoneItem: {
+  livePulseActive: { backgroundColor: 'rgba(16,185,129,0.2)' },
+  liveDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#10B981', marginRight: 6 },
+  liveLabel: { fontSize: 11, fontWeight: '800', color: '#10B981', letterSpacing: 0.5 },
+  mapContainer: { flex: 1, position: 'relative' },
+  map: { flex: 1 },
+  fallbackContainer: { padding: 16, backgroundColor: '#0F172A' },
+  fallbackTitle: { fontSize: 18, fontWeight: '800', color: '#FFFFFF', marginBottom: 2 },
+  fallbackSub: { fontSize: 12, color: '#94A3B8', marginBottom: 14 },
+  fallbackZoneCard: {
     backgroundColor: '#1E293B',
     borderRadius: 12,
     padding: 14,
     marginBottom: 10,
     borderLeftWidth: 4,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
   },
-  fallbackZoneName: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-  fallbackZonePct: {
-    fontSize: 14,
-    fontWeight: '800',
-  },
+  fallbackRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 },
+  fallbackName: { fontSize: 14, fontWeight: '700', color: '#FFFFFF' },
+  fallbackPct: { fontSize: 14, fontWeight: '900' },
+  fallbackBarTrack: { height: 6, backgroundColor: '#334155', borderRadius: 3, overflow: 'hidden', marginBottom: 6 },
+  fallbackBarFill: { height: '100%', borderRadius: 3 },
+  fallbackSubText: { fontSize: 11, color: '#94A3B8' },
   zoneMarker: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 2.5,
+    borderWidth: 2,
     borderColor: '#FFFFFF',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
     elevation: 4,
   },
-  zoneMarkerText: {
-    fontSize: 11,
-    fontWeight: '900',
-    color: '#FFFFFF',
-  },
-  floatingControls: {
-    position: 'absolute',
-    right: 12,
-    top: 12,
-    gap: 8,
-  },
+  zoneMarkerText: { fontSize: 10, fontWeight: '900', color: '#FFFFFF' },
+  floatingControls: { position: 'absolute', right: 12, top: 12, gap: 8 },
   floatingBtn: {
-    width: 44,
-    height: 44,
+    width: 42,
+    height: 42,
     borderRadius: 12,
     backgroundColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 6,
     elevation: 4,
-    marginBottom: 6,
   },
-  floatingBtnActive: {
-    backgroundColor: '#FEF3C7',
-    borderWidth: 2,
-    borderColor: '#F59E0B',
-  },
-  floatingBtnIcon: {
-    fontSize: 20,
-  },
+  floatingBtnActive: { backgroundColor: '#FEF3C7', borderWidth: 2, borderColor: '#F59E0B' },
+  floatingBtnIcon: { fontSize: 18 },
   gpsBadge: {
     position: 'absolute',
     left: 12,
@@ -610,21 +524,9 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
     borderRadius: 8,
   },
-  gpsBadgeText: {
-    color: '#10B981',
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  bottomPanel: {
-    maxHeight: 150,
-    backgroundColor: '#0F172A',
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(255,255,255,0.08)',
-  },
-  bottomPanelContent: {
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-  },
+  gpsBadgeText: { color: '#10B981', fontSize: 11, fontWeight: '700' },
+  bottomPanel: { maxHeight: 140, backgroundColor: '#0F172A', borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.08)' },
+  bottomPanelContent: { paddingHorizontal: 12, paddingVertical: 10 },
   zoneCard: {
     width: SCREEN_WIDTH * 0.38,
     backgroundColor: '#1E293B',
@@ -633,63 +535,17 @@ const styles = StyleSheet.create({
     borderTopWidth: 3,
     marginRight: 10,
   },
-  zoneCardSelected: {
-    backgroundColor: '#334155',
-    borderWidth: 1,
-    borderColor: 'rgba(99,102,241,0.5)',
-  },
-  zoneCardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 6,
-  },
-  zoneCardName: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#E2E8F0',
-    flex: 1,
-    marginRight: 6,
-  },
-  densityChip: {
-    paddingHorizontal: 5,
-    paddingVertical: 2,
-    borderRadius: 6,
-  },
-  densityChipText: {
-    fontSize: 9,
-    fontWeight: '800',
-  },
-  zoneCardPct: {
-    fontSize: 22,
-    fontWeight: '900',
-    marginBottom: 4,
-  },
-  zoneCardProgressTrack: {
-    height: 4,
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    borderRadius: 2,
-    overflow: 'hidden',
-    marginBottom: 6,
-  },
-  zoneCardProgressFill: {
-    height: '100%',
-    borderRadius: 2,
-  },
-  zoneCardCount: {
-    fontSize: 11,
-    color: '#94A3B8',
-    fontWeight: '600',
-  },
-  zoneCardTrend: {
-    marginTop: 4,
-  },
-  zoneCardTrendText: {
-    fontSize: 10,
-    color: '#64748B',
-    fontWeight: '600',
-    textTransform: 'capitalize',
-  },
+  zoneCardSelected: { backgroundColor: '#334155', borderWidth: 1, borderColor: 'rgba(99,102,241,0.5)' },
+  zoneCardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
+  zoneCardName: { fontSize: 12, fontWeight: '700', color: '#E2E8F0', flex: 1, marginRight: 6 },
+  densityChip: { paddingHorizontal: 5, paddingVertical: 2, borderRadius: 6 },
+  densityChipText: { fontSize: 9, fontWeight: '800' },
+  zoneCardPct: { fontSize: 20, fontWeight: '900', marginBottom: 4 },
+  zoneCardProgressTrack: { height: 4, backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 2, overflow: 'hidden', marginBottom: 6 },
+  zoneCardProgressFill: { height: '100%', borderRadius: 2 },
+  zoneCardCount: { fontSize: 11, color: '#94A3B8', fontWeight: '600' },
+  zoneCardTrend: { marginTop: 4 },
+  zoneCardTrendText: { fontSize: 10, color: '#64748B', fontWeight: '600', textTransform: 'capitalize' },
   legendBar: {
     flexDirection: 'row',
     justifyContent: 'center',
@@ -700,19 +556,7 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: 'rgba(255,255,255,0.06)',
   },
-  legendItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  legendDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  legendText: {
-    fontSize: 10,
-    color: '#94A3B8',
-    fontWeight: '600',
-  },
+  legendItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  legendDot: { width: 8, height: 8, borderRadius: 4 },
+  legendText: { fontSize: 10, color: '#94A3B8', fontWeight: '600' },
 });

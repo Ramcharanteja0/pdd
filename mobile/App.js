@@ -1,3 +1,27 @@
+import * as ReactNative from 'react-native';
+
+// Polyfill codegenNativeCommands for React Native 0.78 / Expo SDK 54 compatibility
+if (typeof ReactNative.codegenNativeCommands !== 'function') {
+  ReactNative.codegenNativeCommands = function (options) {
+    const commands = options?.supportedCommands || [];
+    return commands.reduce((acc, command) => {
+      acc[command] = (ref, ...args) => {
+        try {
+          if (ReactNative.UIManager && ReactNative.findNodeHandle) {
+            const handle = ReactNative.findNodeHandle(ref);
+            if (handle) {
+              ReactNative.UIManager.dispatchViewManagerCommand(handle, command, args);
+            }
+          }
+        } catch (e) {
+          // Fallback if node handle or command dispatch fails
+        }
+      };
+      return acc;
+    }, {});
+  };
+}
+
 import React, { useState, useEffect } from 'react';
 import { View, ActivityIndicator, Text, StyleSheet, SafeAreaView, StatusBar } from 'react-native';
 import { supabase } from './src/services/supabase';
