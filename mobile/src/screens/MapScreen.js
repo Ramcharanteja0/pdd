@@ -9,83 +9,70 @@ import {
   Dimensions,
   Platform,
 } from 'react-native';
+import { WebView } from 'react-native-webview';
 import * as Location from 'expo-location';
 import { supabase } from '../services/supabase';
 
-// Safely import react-native-maps if supported
-let MapView, Marker, Circle, Polygon;
-try {
-  const Maps = require('react-native-maps');
-  MapView = Maps.default;
-  Marker = Maps.Marker;
-  Circle = Maps.Circle;
-  Polygon = Maps.Polygon;
-} catch (e) {
-  // Graceful fallback if native maps module is missing or incompatible in environment
-}
-
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
-// ── Zone definitions with geo-coordinates ──────────────────
+// ── Venue Zone Definitions ────────────────────────────────
 const VENUE_ZONES = [
   {
     id: '1', name: 'Main Stage Arena',
-    center: { latitude: 15.8281, longitude: 78.0373 },
-    radius: 120, color: '#EF4444',
+    center: [15.8281, 78.0373],
+    color: '#EF4444',
     polygon: [
-      { latitude: 15.8291, longitude: 78.0363 },
-      { latitude: 15.8291, longitude: 78.0383 },
-      { latitude: 15.8271, longitude: 78.0383 },
-      { latitude: 15.8271, longitude: 78.0363 },
+      [15.8291, 78.0363],
+      [15.8291, 78.0383],
+      [15.8271, 78.0383],
+      [15.8271, 78.0363],
     ],
   },
   {
     id: '2', name: 'Food Court & Plaza',
-    center: { latitude: 15.8265, longitude: 78.0395 },
-    radius: 90, color: '#F59E0B',
+    center: [15.8265, 78.0395],
+    color: '#F59E0B',
     polygon: [
-      { latitude: 15.8273, longitude: 78.0387 },
-      { latitude: 15.8273, longitude: 78.0403 },
-      { latitude: 15.8257, longitude: 78.0403 },
-      { latitude: 15.8257, longitude: 78.0387 },
+      [15.8273, 78.0387],
+      [15.8273, 78.0403],
+      [15.8257, 78.0403],
+      [15.8257, 78.0387],
     ],
   },
   {
     id: '3', name: 'North Gate Entrance',
-    center: { latitude: 15.8300, longitude: 78.0380 },
-    radius: 70, color: '#10B981',
+    center: [15.8300, 78.0380],
+    color: '#10B981',
     polygon: [
-      { latitude: 15.8307, longitude: 78.0373 },
-      { latitude: 15.8307, longitude: 78.0387 },
-      { latitude: 15.8293, longitude: 78.0387 },
-      { latitude: 15.8293, longitude: 78.0373 },
+      [15.8307, 78.0373],
+      [15.8307, 78.0387],
+      [15.8293, 78.0387],
+      [15.8293, 78.0373],
     ],
   },
   {
     id: '4', name: 'VIP Pavilion',
-    center: { latitude: 15.8275, longitude: 78.0350 },
-    radius: 60, color: '#8B5CF6',
+    center: [15.8275, 78.0350],
+    color: '#8B5CF6',
     polygon: [
-      { latitude: 15.8281, longitude: 78.0343 },
-      { latitude: 15.8281, longitude: 78.0357 },
-      { latitude: 15.8269, longitude: 78.0357 },
-      { latitude: 15.8269, longitude: 78.0343 },
+      [15.8281, 78.0343],
+      [15.8281, 78.0357],
+      [15.8269, 78.0357],
+      [15.8269, 78.0343],
     ],
   },
   {
     id: '5', name: 'Parking Zone A',
-    center: { latitude: 15.8310, longitude: 78.0350 },
-    radius: 100, color: '#06B6D4',
+    center: [15.8310, 78.0350],
+    color: '#06B6D4',
     polygon: [
-      { latitude: 15.8318, longitude: 78.0340 },
-      { latitude: 15.8318, longitude: 78.0360 },
-      { latitude: 15.8302, longitude: 78.0360 },
-      { latitude: 15.8302, longitude: 78.0340 },
+      [15.8318, 78.0340],
+      [15.8318, 78.0360],
+      [15.8302, 78.0360],
+      [15.8302, 78.0340],
     ],
   },
 ];
-
-const VENUE_CENTER = { latitude: 15.8281, longitude: 78.0373 };
 
 function getDensityColor(pct) {
   if (pct >= 80) return '#EF4444';
@@ -102,51 +89,62 @@ function getDensityLabel(pct) {
 }
 
 export default function MapScreen() {
-  const mapRef = useRef(null);
+  const webViewRef = useRef(null);
   const [userLocation, setUserLocation] = useState(null);
-  const [zones, setZones] = useState(VENUE_ZONES.map(z => ({ ...z, current_count: 3500, max_capacity: 10000, density: 45, trend: 'stable' })));
+  const [zones, setZones] = useState(
+    VENUE_ZONES.map(z => ({
+      ...z,
+      current_count: 3500,
+      max_capacity: 10000,
+      density: 45,
+      trend: 'stable',
+    }))
+  );
   const [selectedZone, setSelectedZone] = useState(null);
   const [attendeeCount, setAttendeeCount] = useState(17500);
-  const [mapType, setMapType] = useState('standard');
-  const [showHeatmap, setShowHeatmap] = useState(true);
   const [trackingActive, setTrackingActive] = useState(false);
-  const [hasNativeMapError, setHasNativeMapError] = useState(false);
   const locationSubscription = useRef(null);
 
+  // Fetch zone telemetry from Supabase
   const fetchZoneData = async () => {
     try {
       const { data, error } = await supabase.from('zones').select('*');
       if (!error && data && data.length > 0) {
         const merged = VENUE_ZONES.map((vz) => {
           const dbZone = data.find((d) => String(d.id) === vz.id || d.name === vz.name);
+          const density = dbZone?.density || Math.floor(Math.random() * 85) + 15;
           return {
             ...vz,
-            current_count: dbZone?.current_count || (dbZone?.density
-              ? Math.round((dbZone.capacity || 10000) * (dbZone.density || 0) / 100)
-              : Math.floor(Math.random() * 8000) + 500),
-            max_capacity: dbZone?.capacity || dbZone?.max_capacity || 10000,
-            density: dbZone?.density || Math.floor(Math.random() * 90) + 10,
+            current_count: dbZone?.current_count || Math.round(10000 * density / 100),
+            max_capacity: dbZone?.capacity || 10000,
+            density,
             trend: dbZone?.trend || 'stable',
           };
         });
         setZones(merged);
         setAttendeeCount(merged.reduce((s, z) => s + z.current_count, 0));
+        updateMapData(merged, userLocation);
       } else {
-        const mock = VENUE_ZONES.map((vz) => ({
-          ...vz,
-          current_count: Math.floor(Math.random() * 6000) + 1000,
-          max_capacity: 10000,
-          density: Math.floor(Math.random() * 80) + 15,
-          trend: ['increasing', 'stable', 'decreasing'][Math.floor(Math.random() * 3)],
-        }));
+        const mock = VENUE_ZONES.map((vz) => {
+          const density = Math.floor(Math.random() * 80) + 15;
+          return {
+            ...vz,
+            current_count: Math.round(10000 * density / 100),
+            max_capacity: 10000,
+            density,
+            trend: ['increasing', 'stable', 'decreasing'][Math.floor(Math.random() * 3)],
+          };
+        });
         setZones(mock);
         setAttendeeCount(mock.reduce((s, z) => s + z.current_count, 0));
+        updateMapData(mock, userLocation);
       }
     } catch (err) {
-      // Keep default state
+      // Fallback update
     }
   };
 
+  // Start live GPS tracking
   const startLocationTracking = async () => {
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
@@ -156,12 +154,15 @@ export default function MapScreen() {
         accuracy: Location.Accuracy.Balanced,
       });
 
-      setUserLocation({
-        latitude: location.coords.latitude,
-        longitude: location.coords.longitude,
+      const loc = {
+        lat: location.coords.latitude,
+        lng: location.coords.longitude,
         accuracy: location.coords.accuracy,
-      });
+      };
+
+      setUserLocation(loc);
       setTrackingActive(true);
+      updateMapData(zones, loc);
 
       locationSubscription.current = await Location.watchPositionAsync(
         {
@@ -169,39 +170,44 @@ export default function MapScreen() {
           distanceInterval: 10,
           timeInterval: 10000,
         },
-        (loc) => {
-          setUserLocation({
-            latitude: loc.coords.latitude,
-            longitude: loc.coords.longitude,
-            accuracy: loc.coords.accuracy,
-          });
+        (newLoc) => {
+          const updatedLoc = {
+            lat: newLoc.coords.latitude,
+            lng: newLoc.coords.longitude,
+            accuracy: newLoc.coords.accuracy,
+          };
+          setUserLocation(updatedLoc);
+          updateMapData(zones, updatedLoc);
         }
       );
     } catch (err) {
-      // Ignore location error
+      // Standby GPS mode
+    }
+  };
+
+  // Update map layer via postMessage
+  const updateMapData = (zoneList, loc) => {
+    if (webViewRef.current) {
+      const payload = JSON.stringify({
+        type: 'UPDATE_MAP',
+        zones: zoneList,
+        userLocation: loc,
+      });
+      webViewRef.current.postMessage(payload);
     }
   };
 
   const centerOnUser = () => {
-    if (userLocation && mapRef.current && mapRef.current.animateToRegion) {
-      mapRef.current.animateToRegion({
-        latitude: userLocation.latitude,
-        longitude: userLocation.longitude,
-        latitudeDelta: 0.005,
-        longitudeDelta: 0.005,
-      }, 800);
+    if (userLocation && webViewRef.current) {
+      webViewRef.current.postMessage(JSON.stringify({ type: 'CENTER_USER' }));
     } else {
-      Alert.alert('GPS Location', 'Locking onto user location...');
+      Alert.alert('GPS Location', 'Locking onto your position...');
     }
   };
 
   const centerOnVenue = () => {
-    if (mapRef.current && mapRef.current.animateToRegion) {
-      mapRef.current.animateToRegion({
-        ...VENUE_CENTER,
-        latitudeDelta: 0.008,
-        longitudeDelta: 0.008,
-      }, 800);
+    if (webViewRef.current) {
+      webViewRef.current.postMessage(JSON.stringify({ type: 'CENTER_VENUE' }));
     }
   };
 
@@ -223,11 +229,105 @@ export default function MapScreen() {
     return '→';
   };
 
-  const canRenderNativeMap = MapView && !hasNativeMapError;
+  // Leaflet OpenStreetMap HTML source
+  const leafletHTML = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+      <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+      <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+      <style>
+        body, html, #map { margin: 0; padding: 0; width: 100%; height: 100%; background: #0F172A; }
+        .zone-popup { font-family: system-ui, sans-serif; padding: 4px; }
+        .zone-popup h4 { margin: 0 0 4px 0; font-size: 14px; font-weight: 800; color: #0F172A; }
+        .zone-popup p { margin: 0; font-size: 12px; color: #475569; }
+        .user-marker {
+          width: 16px; height: 16px; background: #3B82F6; border: 3px solid #FFFFFF;
+          border-radius: 50%; box-shadow: 0 0 10px rgba(59,130,246,0.8);
+        }
+      </style>
+    </head>
+    <body>
+      <div id="map"></div>
+      <script>
+        const venueCenter = [15.8281, 78.0373];
+        const map = L.map('map', { zoomControl: false }).setView(venueCenter, 16);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          maxZoom: 19,
+          attribution: 'OpenStreetMap'
+        }).addTo(map);
+
+        let zoneLayers = [];
+        let userMarker = null;
+        let lastUserLoc = null;
+
+        function getDensityColor(pct) {
+          if (pct >= 80) return '#EF4444';
+          if (pct >= 50) return '#F59E0B';
+          if (pct >= 30) return '#3B82F6';
+          return '#10B981';
+        }
+
+        function updateMap(zones, userLoc) {
+          zoneLayers.forEach(l => map.removeLayer(l));
+          zoneLayers = [];
+
+          if (zones && zones.length) {
+            zones.forEach(z => {
+              const color = getDensityColor(z.density);
+              if (z.polygon) {
+                const poly = L.polygon(z.polygon, {
+                  color: color,
+                  fillColor: color,
+                  fillOpacity: 0.35,
+                  weight: 2
+                }).addTo(map);
+                poly.bindPopup('<div class="zone-popup"><h4>' + z.name + '</h4><p>Density: <b>' + z.density + '%</b> (' + z.current_count + ' attendees)</p></div>');
+                zoneLayers.push(poly);
+              }
+              const circle = L.circle(z.center, {
+                radius: 60,
+                color: color,
+                fillColor: color,
+                fillOpacity: 0.2,
+                weight: 1
+              }).addTo(map);
+              zoneLayers.push(circle);
+            });
+          }
+
+          if (userLoc && userLoc.lat && userLoc.lng) {
+            lastUserLoc = [userLoc.lat, userLoc.lng];
+            if (!userMarker) {
+              const userIcon = L.divIcon({ className: 'user-marker', iconSize: [16, 16] });
+              userMarker = L.marker([userLoc.lat, userLoc.lng], { icon: userIcon }).addTo(map);
+            } else {
+              userMarker.setLatLng([userLoc.lat, userLoc.lng]);
+            }
+          }
+        }
+
+        document.addEventListener('message', function(e) {
+          try {
+            const data = JSON.parse(e.data);
+            if (data.type === 'UPDATE_MAP') {
+              updateMap(data.zones, data.userLocation);
+            } else if (data.type === 'CENTER_USER' && lastUserLoc) {
+              map.setView(lastUserLoc, 17, { animate: true });
+            } else if (data.type === 'CENTER_VENUE') {
+              map.setView(venueCenter, 16, { animate: true });
+            }
+          } catch (err) {}
+        });
+      </script>
+    </body>
+    </html>
+  `;
 
   return (
     <View style={styles.container}>
-      {/* Top Header */}
+      {/* Top Header Bar */}
       <View style={styles.topBar}>
         <View style={styles.topBarLeft}>
           <Text style={styles.topBarTitle}>Live Venue Map</Text>
@@ -238,102 +338,24 @@ export default function MapScreen() {
         <View style={styles.topBarRight}>
           <View style={[styles.livePulse, trackingActive && styles.livePulseActive]}>
             <View style={styles.liveDot} />
-            <Text style={styles.liveLabel}>{trackingActive ? 'GPS ON' : 'GPS STANDBY'}</Text>
+            <Text style={styles.liveLabel}>{trackingActive ? 'GPS ACTIVE' : 'GPS STANDBY'}</Text>
           </View>
         </View>
       </View>
 
-      {/* Map View or Interactive Grid View */}
+      {/* Interactive Map WebView */}
       <View style={styles.mapContainer}>
-        {canRenderNativeMap ? (
-          <MapView
-            ref={mapRef}
-            style={styles.map}
-            mapType={mapType}
-            initialRegion={{
-              ...VENUE_CENTER,
-              latitudeDelta: 0.008,
-              longitudeDelta: 0.008,
-            }}
-            showsUserLocation={true}
-            showsMyLocationButton={false}
-            showsCompass={true}
-            rotateEnabled={true}
-            pitchEnabled={true}
-            onError={() => setHasNativeMapError(true)}
-          >
-            {zones.map((zone) => {
-              const pct = zone.density || 0;
-              const fillColor = getDensityColor(pct) + '33';
-              const strokeColor = getDensityColor(pct);
+        <WebView
+          ref={webViewRef}
+          source={{ html: leafletHTML }}
+          style={styles.map}
+          javaScriptEnabled={true}
+          domStorageEnabled={true}
+          originWhitelist={['*']}
+          onLoadEnd={() => updateMapData(zones, userLocation)}
+        />
 
-              return (
-                <React.Fragment key={zone.id}>
-                  {zone.polygon && Polygon && (
-                    <Polygon
-                      coordinates={zone.polygon}
-                      fillColor={fillColor}
-                      strokeColor={strokeColor}
-                      strokeWidth={2}
-                      tappable={true}
-                      onPress={() => setSelectedZone(zone)}
-                    />
-                  )}
-
-                  {showHeatmap && zone.center && Circle && (
-                    <Circle
-                      center={zone.center}
-                      radius={zone.radius * Math.max(0.4, pct / 100)}
-                      fillColor={getDensityColor(pct) + '25'}
-                      strokeColor={getDensityColor(pct) + '50'}
-                      strokeWidth={1}
-                    />
-                  )}
-
-                  {zone.center && Marker && (
-                    <Marker
-                      coordinate={zone.center}
-                      onPress={() => setSelectedZone(zone)}
-                    >
-                      <View style={[styles.zoneMarker, { backgroundColor: getDensityColor(pct) }]}>
-                        <Text style={styles.zoneMarkerText}>{pct}%</Text>
-                      </View>
-                    </Marker>
-                  )}
-                </React.Fragment>
-              );
-            })}
-          </MapView>
-        ) : (
-          /* Interactive Spatial Grid Fallback */
-          <ScrollView contentContainerStyle={styles.fallbackContainer}>
-            <Text style={styles.fallbackTitle}>🗺️ Live Venue Density Grid</Text>
-            <Text style={styles.fallbackSub}>Real-time H3 Telemetry Active</Text>
-            {zones.map((zone) => (
-              <TouchableOpacity
-                key={zone.id}
-                style={[styles.fallbackZoneCard, { borderLeftColor: getDensityColor(zone.density) }]}
-                onPress={() => setSelectedZone(zone)}
-                activeOpacity={0.8}
-              >
-                <View style={styles.fallbackRow}>
-                  <Text style={styles.fallbackName}>{zone.name}</Text>
-                  <Text style={[styles.fallbackPct, { color: getDensityColor(zone.density) }]}>
-                    {zone.density}%
-                  </Text>
-                </View>
-                <View style={styles.fallbackBarTrack}>
-                  <View style={[styles.fallbackBarFill, { width: `${zone.density}%`, backgroundColor: getDensityColor(zone.density) }]} />
-                </View>
-                <Text style={styles.fallbackSubText}>
-                  {zone.current_count?.toLocaleString()} / {zone.max_capacity?.toLocaleString()} attendees ({zone.trend})
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        )}
-
-        {/* Floating Map Controls */}
+        {/* Floating Controls */}
         <View style={styles.floatingControls}>
           <TouchableOpacity style={styles.floatingBtn} onPress={centerOnUser}>
             <Text style={styles.floatingBtnIcon}>📍</Text>
@@ -341,21 +363,9 @@ export default function MapScreen() {
           <TouchableOpacity style={styles.floatingBtn} onPress={centerOnVenue}>
             <Text style={styles.floatingBtnIcon}>🏟️</Text>
           </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.floatingBtn}
-            onPress={() => setMapType(mapType === 'standard' ? 'satellite' : 'standard')}
-          >
-            <Text style={styles.floatingBtnIcon}>{mapType === 'standard' ? '🛰️' : '🗺️'}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.floatingBtn, showHeatmap && styles.floatingBtnActive]}
-            onPress={() => setShowHeatmap(!showHeatmap)}
-          >
-            <Text style={styles.floatingBtnIcon}>🔥</Text>
-          </TouchableOpacity>
         </View>
 
-        {/* GPS Badge */}
+        {/* GPS Accuracy Badge */}
         {userLocation && (
           <View style={styles.gpsBadge}>
             <Text style={styles.gpsBadgeText}>
@@ -384,7 +394,18 @@ export default function MapScreen() {
                 isSelected && styles.zoneCardSelected,
                 { borderTopColor: getDensityColor(pct) },
               ]}
-              onPress={() => setSelectedZone(zone)}
+              onPress={() => {
+                setSelectedZone(zone);
+                if (webViewRef.current) {
+                  webViewRef.current.postMessage(
+                    JSON.stringify({
+                      type: 'UPDATE_MAP',
+                      zones: [zone],
+                      userLocation,
+                    })
+                  );
+                }
+              }}
               activeOpacity={0.8}
             >
               <View style={styles.zoneCardHeader}>
@@ -475,34 +496,7 @@ const styles = StyleSheet.create({
   liveDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#10B981', marginRight: 6 },
   liveLabel: { fontSize: 11, fontWeight: '800', color: '#10B981', letterSpacing: 0.5 },
   mapContainer: { flex: 1, position: 'relative' },
-  map: { flex: 1 },
-  fallbackContainer: { padding: 16, backgroundColor: '#0F172A' },
-  fallbackTitle: { fontSize: 18, fontWeight: '800', color: '#FFFFFF', marginBottom: 2 },
-  fallbackSub: { fontSize: 12, color: '#94A3B8', marginBottom: 14 },
-  fallbackZoneCard: {
-    backgroundColor: '#1E293B',
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 10,
-    borderLeftWidth: 4,
-  },
-  fallbackRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 },
-  fallbackName: { fontSize: 14, fontWeight: '700', color: '#FFFFFF' },
-  fallbackPct: { fontSize: 14, fontWeight: '900' },
-  fallbackBarTrack: { height: 6, backgroundColor: '#334155', borderRadius: 3, overflow: 'hidden', marginBottom: 6 },
-  fallbackBarFill: { height: '100%', borderRadius: 3 },
-  fallbackSubText: { fontSize: 11, color: '#94A3B8' },
-  zoneMarker: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: '#FFFFFF',
-    elevation: 4,
-  },
-  zoneMarkerText: { fontSize: 10, fontWeight: '900', color: '#FFFFFF' },
+  map: { flex: 1, backgroundColor: '#0F172A' },
   floatingControls: { position: 'absolute', right: 12, top: 12, gap: 8 },
   floatingBtn: {
     width: 42,
@@ -513,7 +507,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     elevation: 4,
   },
-  floatingBtnActive: { backgroundColor: '#FEF3C7', borderWidth: 2, borderColor: '#F59E0B' },
   floatingBtnIcon: { fontSize: 18 },
   gpsBadge: {
     position: 'absolute',
