@@ -500,7 +500,7 @@ export async function fetchCrowdTimeline() {
     const { data, error } = await supabase
       .from('attendee_locations')
       .select('created_at, updated_at, zone_id, zone_name')
-      .gte('created_at', today.toISOString())
+      .or(`created_at.gte.${today.toISOString()},updated_at.gte.${today.toISOString()}`)
       .eq('event_id', 'current');
 
     const startHour = 8;
@@ -508,40 +508,32 @@ export async function fetchCrowdTimeline() {
     const hourMap = {};
     for (let h = startHour; h <= endHour; h++) {
       const key = `${String(h).padStart(2, '0')}:00`;
-      hourMap[key] = { time: key, attendees: 0 };
+      hourMap[key] = { time: key, attendees: 0, checkins: 0, active: 0 };
     }
 
-    if (data && data.length > 0) {
+    if (!error && data && data.length > 0) {
       data.forEach(row => {
         const createdHour = new Date(row.created_at).getHours();
-        const key = `${String(createdHour).padStart(2, '0')}:00`;
-        if (hourMap[key]) hourMap[key].attendees++;
+        const createdKey = `${String(createdHour).padStart(2, '0')}:00`;
+        if (hourMap[createdKey]) {
+          hourMap[createdKey].checkins++;
+          hourMap[createdKey].attendees++;
+        }
+
+        if (row.updated_at) {
+          const updatedHour = new Date(row.updated_at).getHours();
+          const updatedKey = `${String(updatedHour).padStart(2, '0')}:00`;
+          if (hourMap[updatedKey] && updatedKey !== createdKey) {
+            hourMap[updatedKey].active++;
+            hourMap[updatedKey].attendees++;
+          }
+        }
       });
     }
 
-    const timeline = Object.values(hourMap);
-    if (error || timeline.every(t => t.attendees === 0)) {
-      return [
-        { time: '08:00', attendees: 1200 },
-        { time: '10:00', attendees: 3100 },
-        { time: '12:00', attendees: 5400 },
-        { time: '14:00', attendees: 6800 },
-        { time: '16:00', attendees: 7900 },
-        { time: '18:00', attendees: 8600 },
-        { time: '20:00', attendees: 7200 },
-      ];
-    }
-    return timeline.filter(t => t.attendees > 0);
+    return Object.values(hourMap).sort((a, b) => a.time.localeCompare(b.time)).filter(t => t.attendees > 0);
   } catch (err) {
-    return [
-      { time: '08:00', attendees: 1200 },
-      { time: '10:00', attendees: 3100 },
-      { time: '12:00', attendees: 5400 },
-      { time: '14:00', attendees: 6800 },
-      { time: '16:00', attendees: 7900 },
-      { time: '18:00', attendees: 8600 },
-      { time: '20:00', attendees: 7200 },
-    ];
+    return [];
   }
 }
 

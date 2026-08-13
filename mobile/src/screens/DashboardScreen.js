@@ -7,7 +7,7 @@ import {
   TouchableOpacity,
   RefreshControl,
 } from 'react-native';
-import { fetchZones, fetchCrowdTimeline, fetchEventInfo } from '../services/dataService';
+import { fetchZones, fetchCrowdTimeline, fetchEventInfo, fetchAttendeeLocations } from '../services/dataService';
 import { scaleFont, scaleSize, responsivePadding, responsiveBorderRadius } from '../utils/responsive';
 
 function LoginTrendChart({ data }) {
@@ -67,11 +67,12 @@ function DensityChart({ zones }) {
 export default function DashboardScreen() {
   const [zones, setZones] = useState([]);
   const [timeline, setTimeline] = useState([]);
+  const [activeDevices, setActiveDevices] = useState(0);
   const [eventName, setEventName] = useState('Live Overview');
   const [refreshing, setRefreshing] = useState(false);
 
   const loadData = async () => {
-    const [data, tl, evt] = await Promise.all([fetchZones(), fetchCrowdTimeline(), fetchEventInfo()]);
+    const [data, tl, evt, attendees] = await Promise.all([fetchZones(), fetchCrowdTimeline(), fetchEventInfo(), fetchAttendeeLocations()]);
     const normalized = data.map(z => {
       const current = z.current_count != null ? z.current_count : (z.density != null ? Math.round((z.capacity || 0) * (z.density / 100)) : 0);
       const max = z.max_capacity || z.capacity || 0;
@@ -80,6 +81,7 @@ export default function DashboardScreen() {
     });
     setZones(normalized);
     setTimeline(tl);
+    setActiveDevices((attendees || []).length);
     if (evt && evt.name) setEventName(evt.name);
   };
 
@@ -126,6 +128,12 @@ export default function DashboardScreen() {
           <Text style={styles.statLabel}>Avg Density</Text>
           <Text style={styles.statValue}>{avgOccupancy}%</Text>
           <Text style={[styles.statSub, { color: '#10B981' }]}>🟢 Optimal Flow</Text>
+        </View>
+
+        <View style={[styles.statCard, { borderTopColor: '#F59E0B' }]}>
+          <Text style={styles.statLabel}>Active Devices</Text>
+          <Text style={styles.statValue}>{activeDevices}</Text>
+          <Text style={styles.statSub}>GPS tracked (10 min)</Text>
         </View>
       </View>
 
