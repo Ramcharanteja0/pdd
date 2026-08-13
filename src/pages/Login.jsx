@@ -272,7 +272,8 @@ export default function Login() {
           .login-header {
             position: absolute;
             top: 0; left: 0; right: 0;
-            height: 45vh;
+            height: 100vh;
+            min-height: 100vh;
           }
           .login-card {
             max-width: 440px;
