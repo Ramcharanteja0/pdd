@@ -235,7 +235,9 @@ export default function Login() {
           background: #f8fafc;
         }
         .login-header {
-          background: linear-gradient(135deg, #6366F1 0%, #8B5CF6 50%, #A78BFA 100%);
+          background: linear-gradient(135deg, #6366F1 0%, #8B5CF6 25%, #A78BFA 50%, #C4B5FD 72%, #8B5CF6 100%);
+          background-size: 300% 300%;
+          animation: aurora 16s ease-in-out infinite;
           height: 35vh;
           min-height: 260px;
           display: flex;
@@ -243,6 +245,23 @@ export default function Login() {
           justify-content: center;
           position: relative;
           overflow: hidden;
+        }
+        .glow-orb {
+          position: absolute;
+          border-radius: 50%;
+          filter: blur(40px);
+          opacity: 0.5;
+          pointer-events: none;
+        }
+        @keyframes aurora {
+          0%   { background-position: 0% 50%; }
+          50%  { background-position: 100% 50%; }
+          100% { background-position: 0% 50%; }
+        }
+        @keyframes float {
+          0%   { transform: translate(0, 0) scale(1); }
+          50%  { transform: translate(40px, -30px) scale(1.15); }
+          100% { transform: translate(0, 0) scale(1); }
         }
         .login-card {
           background: white;
@@ -291,6 +310,11 @@ export default function Login() {
         <div className="circle-bg" style={{ width: 300, height: 300, animationDelay: '0s' }}></div>
         <div className="circle-bg" style={{ width: 450, height: 450, animationDelay: '1s' }}></div>
         <div className="circle-bg" style={{ width: 600, height: 600, animationDelay: '2s' }}></div>
+
+        {/* Floating glow orbs (same indigo/violet palette) */}
+        <div className="glow-orb" style={{ width: 320, height: 320, top: '10%', left: '-60px', animation: 'float 9s ease-in-out infinite', background: 'radial-gradient(circle, #A78BFA 0%, transparent 70%)' }}></div>
+        <div className="glow-orb" style={{ width: 380, height: 380, bottom: '-80px', right: '-60px', animation: 'float 12s ease-in-out infinite 1.5s', background: 'radial-gradient(circle, #6366F1 0%, transparent 70%)' }}></div>
+        <div className="glow-orb" style={{ width: 260, height: 260, top: '5%', right: '18%', animation: 'float 10s ease-in-out infinite 3s', background: 'radial-gradient(circle, #C4B5FD 0%, transparent 70%)' }}></div>
 
         <div style={{ position: 'relative', zIndex: 1, display: 'flex', alignItems: 'center', gap: 12 }}>
           <div className="auth-logo-icon">
