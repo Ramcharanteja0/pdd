@@ -6,8 +6,8 @@
  * 
  * Also renders flow vector arrows showing crowd movement direction.
  */
-import { useEffect, useState } from 'react';
-import { Polygon, Popup, Polyline, useMap } from 'react-leaflet';
+import { useEffect } from 'react';
+import { Polygon, Popup, Polyline, CircleMarker, useMap } from 'react-leaflet';
 
 /**
  * HexLayer — renders H3 hexagons colored by density
@@ -74,6 +74,53 @@ export function HexLayer({ hexDensityMap, getDensityColor, getDensityLevel }) {
           </Polygon>
         );
       })}
+    </>
+  );
+}
+
+/**
+ * DeviceMarkers — renders a marker for every active tracked GPS device
+ * @param {Array} devices - [{id, lat, lng, zoneName?, updatedAt?}]
+ */
+export function DeviceMarkers({ devices }) {
+  if (!devices || devices.length === 0) return null;
+
+  return (
+    <>
+      {devices.map((d) => (
+        <CircleMarker
+          key={d.id}
+          center={[d.lat, d.lng]}
+          radius={5}
+          pathOptions={{
+            color: '#6366F1',
+            weight: 1.5,
+            fillColor: '#818CF8',
+            fillOpacity: 0.85,
+          }}
+        >
+          <Popup>
+            <div style={{ fontFamily: "'Inter', sans-serif", minWidth: 150 }}>
+              <div style={{ fontWeight: 800, fontSize: '0.85rem', marginBottom: 4, color: '#6366F1' }}>
+                📱 Active Device
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '4px 12px', fontSize: '0.78rem' }}>
+                <span style={{ opacity: 0.6 }}>ID:</span>
+                <span style={{ fontWeight: 700, fontFamily: 'monospace' }}>{d.id}</span>
+                <span style={{ opacity: 0.6 }}>Zone:</span>
+                <span style={{ fontWeight: 600 }}>{d.zoneName || '—'}</span>
+                <span style={{ opacity: 0.6 }}>Lat/Lng:</span>
+                <span style={{ fontWeight: 600 }}>{d.lat.toFixed(5)}, {d.lng.toFixed(5)}</span>
+              </div>
+              {d.updatedAt && (
+                <div style={{ fontSize: '0.7rem', opacity: 0.6, marginTop: 6 }}>
+                  Updated {new Date(d.updatedAt).toLocaleTimeString()}
+                </div>
+              )}
+            </div>
+          </Popup>
+        </CircleMarker>
+      ))}
     </>
   );
 }
@@ -182,4 +229,4 @@ export function SurgeBanner({ surgeAlerts }) {
   );
 }
 
-export default { HexLayer, FlowArrows, AutoCenter, SurgeBanner };
+export default { HexLayer, DeviceMarkers, FlowArrows, AutoCenter, SurgeBanner };

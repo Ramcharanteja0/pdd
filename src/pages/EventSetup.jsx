@@ -10,9 +10,9 @@
  *
  * The entire app (heatmap, check-in, dashboard) dynamically uses these values.
  */
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { MapContainer, TileLayer, Marker, Circle, Popup, useMapEvents, useMap } from 'react-leaflet';
-import { MapPin, Search, Plus, Trash2, Save, Edit3, Navigation, CheckCircle, AlertTriangle, Loader } from 'lucide-react';
+import { MapPin, Search, Plus, Trash2, Save, Navigation, CheckCircle, AlertTriangle, Loader } from 'lucide-react';
 import Topbar from '../components/Topbar';
 import { supabase } from '../lib/supabase';
 import L from 'leaflet';
@@ -30,10 +30,11 @@ const zoneIcon = new L.Icon({
 });
 
 // Map click handler component
-function MapClickHandler({ onMapClick, isPlacingZone }) {
+function MapClickHandler({ onMapClick, isPlacingZone, isSettingVenue, onVenueClick }) {
   useMapEvents({
     click(e) {
       if (isPlacingZone) onMapClick(e.latlng);
+      else if (isSettingVenue && onVenueClick) onVenueClick(e.latlng);
     },
   });
   return null;
@@ -66,7 +67,7 @@ export default function EventSetup({ sidebarOpen, setSidebarOpen }) {
 
   // UI state
   const [isPlacingZone, setIsPlacingZone] = useState(false);
-  const [editingZone, setEditingZone] = useState(null);
+  const [isSettingVenue, setIsSettingVenue] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState(null); // 'success' | 'error'
   const [loading, setLoading] = useState(true);
@@ -156,12 +157,26 @@ export default function EventSetup({ sidebarOpen, setSidebarOpen }) {
     setSearchQuery('');
   };
 
+  // Set venue location by clicking on the map
+  const handleVenueMapClick = (latlng) => {
+    setVenueCenter([latlng.lat, latlng.lng]);
+    setMapCenter([latlng.lat, latlng.lng]);
+    setIsSettingVenue(false);
+  };
+
   // Handle map click (place new zone)
   const handleMapClick = (latlng) => {
     setPendingLatLng(latlng);
     setNewZoneName('');
     setNewZoneCapacity(500);
     setNewZoneRadius(50);
+  };
+
+  // Toggle venue-location pick mode (turns off zone-placing mode)
+  const startSettingVenue = () => {
+    setIsSettingVenue(true);
+    setIsPlacingZone(false);
+    setPendingLatLng(null);
   };
 
   // Confirm new zone placement
@@ -352,7 +367,7 @@ export default function EventSetup({ sidebarOpen, setSidebarOpen }) {
               <div className="card-header">
                 <span className="card-title">🗺️ Zone Map</span>
                 <button
-                  onClick={() => { setIsPlacingZone(!isPlacingZone); setPendingLatLng(null); }}
+                  onClick={() => { setIsPlacingZone(!isPlacingZone); setIsSettingVenue(false); setPendingLatLng(null); }}
                   style={{
                     padding: '6px 12px', borderRadius: 8, border: 'none', cursor: 'pointer',
                     background: isPlacingZone ? '#EF4444' : 'var(--primary)', color: 'white',
@@ -370,6 +385,16 @@ export default function EventSetup({ sidebarOpen, setSidebarOpen }) {
                   color: '#6366F1', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6,
                 }}>
                   <MapPin size={14} /> Click on the map to place a new zone
+                </div>
+              )}
+
+              {isSettingVenue && (
+                <div style={{
+                  background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)',
+                  borderRadius: 8, padding: '8px 14px', margin: '0 16px', fontSize: '0.78rem',
+                  color: '#EF4444', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6,
+                }}>
+                  <MapPin size={14} /> Click on the map to set the venue center
                 </div>
               )}
 
@@ -427,7 +452,7 @@ export default function EventSetup({ sidebarOpen, setSidebarOpen }) {
                     url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                   />
                   <FlyToCenter center={mapCenter} zoom={17} />
-                  <MapClickHandler onMapClick={handleMapClick} isPlacingZone={isPlacingZone} />
+                  <MapClickHandler onMapClick={handleMapClick} isPlacingZone={isPlacingZone} isSettingVenue={isSettingVenue} onVenueClick={handleVenueMapClick} />
 
                   {/* Venue center marker */}
                   {venueCenter && (
@@ -504,6 +529,28 @@ export default function EventSetup({ sidebarOpen, setSidebarOpen }) {
                       style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1px solid var(--border)', fontSize: '0.85rem', background: 'var(--bg)', color: 'var(--text-primary)', outline: 'none', boxSizing: 'border-box' }}
                     />
                   </div>
+                  <div>
+                    <label style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: 4, display: 'block' }}>Event Location</label>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                      <button
+                        onClick={startSettingVenue}
+                        disabled={isSettingVenue}
+                        style={{
+                          flex: 1, padding: '9px 12px', borderRadius: 8,
+                          border: isSettingVenue ? '1px solid #EF4444' : '1px solid var(--border)',
+                          background: isSettingVenue ? 'rgba(239,68,68,0.06)' : 'var(--bg)',
+                          color: isSettingVenue ? '#EF4444' : 'var(--text-secondary)',
+                          cursor: 'pointer', fontWeight: 600, fontSize: '0.8rem',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                        }}
+                      >
+                        {isSettingVenue ? <><AlertTriangle size={13} /> Click the map to place venue</> : <><MapPin size={13} /> Set Location on Map</>}
+                      </button>
+                    </div>
+                    <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginTop: 4 }}>
+                      Click a spot on the map to mark the venue center, or use the search above.
+                    </div>
+                  </div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                     <div>
                       <label style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: 4, display: 'block' }}>City</label>
@@ -533,7 +580,7 @@ export default function EventSetup({ sidebarOpen, setSidebarOpen }) {
               <div className="card-header">
                 <span className="card-title">🎯 Zones ({zones.length})</span>
                 <button
-                  onClick={() => { setIsPlacingZone(true); setPendingLatLng(null); }}
+                  onClick={() => { setIsPlacingZone(true); setIsSettingVenue(false); setPendingLatLng(null); }}
                   style={{
                     padding: '4px 10px', borderRadius: 6, border: '1px solid var(--border)',
                     background: 'var(--bg)', color: 'var(--text-muted)', cursor: 'pointer',

@@ -27,11 +27,15 @@ import { View, ActivityIndicator, Text, StyleSheet, SafeAreaView, StatusBar } fr
 import { supabase } from './src/services/supabase';
 
 import LoginScreen from './src/screens/LoginScreen';
+import ResetPasswordScreen from './src/screens/ResetPasswordScreen';
+import CreateAccountScreen from './src/screens/CreateAccountScreen';
 import AppNavigator from './src/navigation/AppNavigator';
 
 export default function App() {
   const [user, setUser] = useState(null);
   const [initializing, setInitializing] = useState(true);
+  const [showReset, setShowReset] = useState(false);
+  const [showCreateAccount, setShowCreateAccount] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -74,8 +78,19 @@ export default function App() {
       <StatusBar barStyle="light-content" backgroundColor="#0F172A" />
       {user ? (
         <AppNavigator user={user} onLogout={() => { supabase.auth.signOut(); setUser(null); }} />
+      ) : showCreateAccount ? (
+        <CreateAccountScreen
+          onAccountCreated={(u) => setUser(u)}
+          onShowLogin={() => setShowCreateAccount(false)}
+        />
+      ) : showReset ? (
+        <ResetPasswordScreen onBackToLogin={() => setShowReset(false)} />
       ) : (
-        <LoginScreen onLoginSuccess={(u) => setUser(u)} />
+        <LoginScreen
+          onLoginSuccess={(u) => setUser(u)}
+          onShowCreateAccount={() => setShowCreateAccount(true)}
+          onForgotPassword={() => setShowReset(true)}
+        />
       )}
     </SafeAreaView>
   );

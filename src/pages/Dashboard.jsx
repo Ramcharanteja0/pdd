@@ -108,6 +108,10 @@ export default function Dashboard({ sidebarOpen, setSidebarOpen }) {
           const attendees = await fetchAttendeeLocations();
           setTrackedCount((attendees || []).length);
           setLastRefreshed(new Date());
+          // Re-sync zone densities so the attendee estimate updates live too
+          await syncZoneDensityFromGPS();
+          const zonesData = await fetchZones();
+          setZones(zonesData);
         } catch (e) {}
       })
       .subscribe();

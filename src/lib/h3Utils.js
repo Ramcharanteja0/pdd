@@ -102,6 +102,16 @@ export function getDensityLevel(densityPerSqm) {
 }
 
 /**
+ * Get status label — SAFE / CAUTION / SURGE
+ * Maps density to the operationally-focused status used on the dashboard.
+ */
+export function getStatusLabel(densityPerSqm) {
+  if (densityPerSqm >= 2.5) return 'SURGE';
+  if (densityPerSqm >= 1.0) return 'CAUTION';
+  return 'SAFE';
+}
+
+/**
  * Haversine distance between two points in meters
  */
 function haversine(lat1, lng1, lat2, lng2) {

@@ -12,67 +12,14 @@ import {
 import { WebView } from 'react-native-webview';
 import * as Location from 'expo-location';
 import { supabase } from '../services/supabase';
+import { fetchZones, fetchEventInfo } from '../services/dataService';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
-// ── Venue Zone Definitions ────────────────────────────────
-const VENUE_ZONES = [
-  {
-    id: '1', name: 'Main Stage Arena',
-    center: [15.8281, 78.0373],
-    color: '#EF4444',
-    polygon: [
-      [15.8291, 78.0363],
-      [15.8291, 78.0383],
-      [15.8271, 78.0383],
-      [15.8271, 78.0363],
-    ],
-  },
-  {
-    id: '2', name: 'Food Court & Plaza',
-    center: [15.8265, 78.0395],
-    color: '#F59E0B',
-    polygon: [
-      [15.8273, 78.0387],
-      [15.8273, 78.0403],
-      [15.8257, 78.0403],
-      [15.8257, 78.0387],
-    ],
-  },
-  {
-    id: '3', name: 'North Gate Entrance',
-    center: [15.8300, 78.0380],
-    color: '#10B981',
-    polygon: [
-      [15.8307, 78.0373],
-      [15.8307, 78.0387],
-      [15.8293, 78.0387],
-      [15.8293, 78.0373],
-    ],
-  },
-  {
-    id: '4', name: 'VIP Pavilion',
-    center: [15.8275, 78.0350],
-    color: '#8B5CF6',
-    polygon: [
-      [15.8281, 78.0343],
-      [15.8281, 78.0357],
-      [15.8269, 78.0357],
-      [15.8269, 78.0343],
-    ],
-  },
-  {
-    id: '5', name: 'Parking Zone A',
-    center: [15.8310, 78.0350],
-    color: '#06B6D4',
-    polygon: [
-      [15.8318, 78.0340],
-      [15.8318, 78.0360],
-      [15.8302, 78.0360],
-      [15.8302, 78.0340],
-    ],
-  },
-];
+// Fallback venue location when the event hasn't been configured yet
+const DEFAULT_VENUE = [13.1945, 80.2425];
+
+const ZONE_COLORS = ['#EF4444', '#F59E0B', '#10B981', '#8B5CF6', '#06B6D4', '#3B82F6', '#F97316', '#EC4899'];
 
 function getDensityColor(pct) {
   if (pct >= 80) return '#EF4444';
@@ -91,56 +38,41 @@ function getDensityLabel(pct) {
 export default function MapScreen() {
   const webViewRef = useRef(null);
   const [userLocation, setUserLocation] = useState(null);
-  const [zones, setZones] = useState(
-    VENUE_ZONES.map(z => ({
-      ...z,
-      current_count: 3500,
-      max_capacity: 10000,
-      density: 45,
-      trend: 'stable',
-    }))
-  );
+  const [venueCenter, setVenueCenter] = useState(DEFAULT_VENUE);
+  const [zones, setZones] = useState([]);
   const [selectedZone, setSelectedZone] = useState(null);
-  const [attendeeCount, setAttendeeCount] = useState(17500);
+  const [attendeeCount, setAttendeeCount] = useState(0);
   const [trackingActive, setTrackingActive] = useState(false);
   const locationSubscription = useRef(null);
 
-  // Fetch zone telemetry from Supabase
+  // Fetch venue location + zones from Supabase (shared with the web app)
   const fetchZoneData = async () => {
     try {
-      const { data, error } = await supabase.from('zones').select('*');
-      if (!error && data && data.length > 0) {
-        const merged = VENUE_ZONES.map((vz) => {
-          const dbZone = data.find((d) => String(d.id) === vz.id || d.name === vz.name);
-          const density = dbZone?.density || Math.floor(Math.random() * 85) + 15;
-          return {
-            ...vz,
-            current_count: dbZone?.current_count || Math.round(10000 * density / 100),
-            max_capacity: dbZone?.capacity || 10000,
-            density,
-            trend: dbZone?.trend || 'stable',
-          };
-        });
-        setZones(merged);
-        setAttendeeCount(merged.reduce((s, z) => s + z.current_count, 0));
-        updateMapData(merged, userLocation);
-      } else {
-        const mock = VENUE_ZONES.map((vz) => {
-          const density = Math.floor(Math.random() * 80) + 15;
-          return {
-            ...vz,
-            current_count: Math.round(10000 * density / 100),
-            max_capacity: 10000,
-            density,
-            trend: ['increasing', 'stable', 'decreasing'][Math.floor(Math.random() * 3)],
-          };
-        });
-        setZones(mock);
-        setAttendeeCount(mock.reduce((s, z) => s + z.current_count, 0));
-        updateMapData(mock, userLocation);
+      const evt = await fetchEventInfo();
+      if (evt && evt.venue_lat && evt.venue_lng) {
+        setVenueCenter([evt.venue_lat, evt.venue_lng]);
       }
+
+      const zoneData = await fetchZones();
+      const merged = zoneData.map((z, i) => {
+        const density = z.density || 0;
+        return {
+          id: String(z.id),
+          name: z.name,
+          center: [z.lat, z.lng],
+          radius: z.radius_meters || 60,
+          color: ZONE_COLORS[i % ZONE_COLORS.length],
+          current_count: z.current_count || Math.round((z.capacity || 0) * density / 100),
+          max_capacity: z.capacity || 0,
+          density,
+          trend: z.trend || 'stable',
+        };
+      });
+      setZones(merged);
+      setAttendeeCount(merged.reduce((s, z) => s + z.current_count, 0));
+      updateMapData(merged, userLocation);
     } catch (err) {
-      // Fallback update
+      // Leave existing state; interval will retry
     }
   };
 
@@ -207,7 +139,7 @@ export default function MapScreen() {
 
   const centerOnVenue = () => {
     if (webViewRef.current) {
-      webViewRef.current.postMessage(JSON.stringify({ type: 'CENTER_VENUE' }));
+      webViewRef.current.postMessage(JSON.stringify({ type: 'CENTER_VENUE', center: venueCenter }));
     }
   };
 
@@ -215,8 +147,31 @@ export default function MapScreen() {
     fetchZoneData();
     startLocationTracking();
     const interval = setInterval(fetchZoneData, 10000);
+
+    // Realtime: keep in sync with web — when zones or event change, update immediately
+    const zonesChannel = supabase
+      .channel('map-zones')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'zones' }, () => fetchZoneData())
+      .subscribe();
+    const eventsChannel = supabase
+      .channel('map-events')
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'events' }, (payload) => {
+        const nc = payload.new;
+        if (nc && nc.venue_lat && nc.venue_lng) {
+          const center = [nc.venue_lat, nc.venue_lng];
+          setVenueCenter(center);
+          if (webViewRef.current) {
+            webViewRef.current.postMessage(JSON.stringify({ type: 'CENTER_VENUE', center }));
+          }
+        }
+        fetchZoneData();
+      })
+      .subscribe();
+
     return () => {
       clearInterval(interval);
+      supabase.removeChannel(zonesChannel);
+      supabase.removeChannel(eventsChannel);
       if (locationSubscription.current) {
         locationSubscription.current.remove();
       }
@@ -251,8 +206,8 @@ export default function MapScreen() {
     <body>
       <div id="map"></div>
       <script>
-        const venueCenter = [15.8281, 78.0373];
-        const map = L.map('map', { zoomControl: false }).setView(venueCenter, 16);
+        const defaultVenue = [${venueCenter[0]}, ${venueCenter[1]}];
+        const map = L.map('map', { zoomControl: false }).setView(defaultVenue, 16);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
           maxZoom: 19,
           attribution: 'OpenStreetMap'
@@ -276,23 +231,14 @@ export default function MapScreen() {
           if (zones && zones.length) {
             zones.forEach(z => {
               const color = getDensityColor(z.density);
-              if (z.polygon) {
-                const poly = L.polygon(z.polygon, {
-                  color: color,
-                  fillColor: color,
-                  fillOpacity: 0.35,
-                  weight: 2
-                }).addTo(map);
-                poly.bindPopup('<div class="zone-popup"><h4>' + z.name + '</h4><p>Density: <b>' + z.density + '%</b> (' + z.current_count + ' attendees)</p></div>');
-                zoneLayers.push(poly);
-              }
               const circle = L.circle(z.center, {
-                radius: 60,
+                radius: z.radius || 60,
                 color: color,
                 fillColor: color,
                 fillOpacity: 0.2,
-                weight: 1
+                weight: 2
               }).addTo(map);
+              circle.bindPopup('<div class="zone-popup"><h4>' + z.name + '</h4><p>Density: <b>' + z.density + '%</b> (' + z.current_count + ' attendees)</p></div>');
               zoneLayers.push(circle);
             });
           }
@@ -316,7 +262,8 @@ export default function MapScreen() {
             } else if (data.type === 'CENTER_USER' && lastUserLoc) {
               map.setView(lastUserLoc, 17, { animate: true });
             } else if (data.type === 'CENTER_VENUE') {
-              map.setView(venueCenter, 16, { animate: true });
+              const c = data.center || defaultVenue;
+              map.setView([c[0], c[1]], 16, { animate: true });
             }
           } catch (err) {}
         });
@@ -352,7 +299,10 @@ export default function MapScreen() {
           javaScriptEnabled={true}
           domStorageEnabled={true}
           originWhitelist={['*']}
-          onLoadEnd={() => updateMapData(zones, userLocation)}
+          onLoadEnd={() => {
+            updateMapData(zones, userLocation);
+            webViewRef.current?.postMessage(JSON.stringify({ type: 'CENTER_VENUE', center: venueCenter }));
+          }}
         />
 
         {/* Floating Controls */}

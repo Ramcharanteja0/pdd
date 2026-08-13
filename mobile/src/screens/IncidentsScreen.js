@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { StyleSheet, View, Text, ScrollView, TouchableOpacity, Alert } from 'react-native';
 import { fetchIncidents } from '../services/dataService';
+import { scaleFont, scaleSize, responsivePadding, responsiveBorderRadius } from '../utils/responsive';
 
 export default function IncidentsScreen() {
   const [incidents, setIncidents] = useState([]);
@@ -53,21 +54,21 @@ export default function IncidentsScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F8FAFC', padding: 16 },
-  header: { marginBottom: 16, marginTop: 8 },
-  headerTitle: { fontSize: 24, fontWeight: '800', color: '#0F172A' },
-  headerSubtitle: { fontSize: 13, color: '#64748B' },
-  card: { backgroundColor: '#FFFFFF', borderRadius: 16, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: '#E2E8F0' },
-  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
-  badge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
+  container: { flex: 1, backgroundColor: '#F8FAFC', padding: responsivePadding() },
+  header: { marginBottom: scaleSize(16), marginTop: scaleSize(8) },
+  headerTitle: { fontSize: scaleFont(24), fontWeight: '800', color: '#0F172A' },
+  headerSubtitle: { fontSize: scaleFont(13), color: '#64748B' },
+  card: { backgroundColor: '#FFFFFF', borderRadius: scaleSize(16), padding: scaleSize(16), marginBottom: scaleSize(12), borderWidth: scaleSize(1), borderColor: '#E2E8F0' },
+  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: scaleSize(8) },
+  badge: { paddingHorizontal: scaleSize(8), paddingVertical: scaleSize(3), borderRadius: scaleSize(6) },
   critBadge: { backgroundColor: '#FEE2E2' },
   modBadge: { backgroundColor: '#FEF3C7' },
-  badgeText: { fontSize: 10, fontWeight: '800' },
+  badgeText: { fontSize: scaleFont(10), fontWeight: '800' },
   critText: { color: '#991B1B' },
   modText: { color: '#92400E' },
-  statusLabel: { fontSize: 12, fontWeight: '700', color: '#64748B' },
-  title: { fontSize: 16, fontWeight: '700', color: '#0F172A', marginBottom: 4 },
-  subtitle: { fontSize: 12, color: '#64748B', marginBottom: 12 },
-  resolveBtn: { backgroundColor: '#F1F5F9', paddingVertical: 8, borderRadius: 8, alignItems: 'center' },
-  resolveText: { color: '#334155', fontSize: 12, fontWeight: '700' },
+  statusLabel: { fontSize: scaleFont(12), fontWeight: '700', color: '#64748B' },
+  title: { fontSize: scaleFont(16), fontWeight: '700', color: '#0F172A', marginBottom: scaleSize(4) },
+  subtitle: { fontSize: scaleFont(12), color: '#64748B', marginBottom: scaleSize(12) },
+  resolveBtn: { backgroundColor: '#F1F5F9', paddingVertical: scaleSize(8), borderRadius: scaleSize(8), alignItems: 'center' },
+  resolveText: { color: '#334155', fontSize: scaleFont(12), fontWeight: '700' },
 });

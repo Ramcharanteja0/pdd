@@ -1,10 +1,19 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { MapContainer, TileLayer } from 'react-leaflet';
-import { Radio, Users, Shield, Activity, RefreshCw, Wifi, AlertTriangle } from 'lucide-react';
+import { MapContainer, TileLayer, useMap } from 'react-leaflet';
+import { Radio, Shield, Activity, RefreshCw, Wifi, AlertTriangle } from 'lucide-react';
 import Topbar from '../components/Topbar';
-import { HexLayer, FlowArrows, AutoCenter, SurgeBanner } from '../components/HexHeatmap';
-import { fetchZones } from '../lib/supabaseService';
+import { HexLayer, DeviceMarkers, FlowArrows, AutoCenter, SurgeBanner } from '../components/HexHeatmap';
+import { fetchZones, fetchEventInfo } from '../lib/supabaseService';
 import { supabase } from '../lib/supabase';
+
+// Fly to the configured venue center whenever it changes
+function FlyToVenue({ center }) {
+  const map = useMap();
+  useEffect(() => {
+    if (center) map.flyTo(center, 17, { duration: 1.2 });
+  }, [center, map]);
+  return null;
+}
 
 // Dynamic imports for h3 utilities — graceful fallback if not yet available
 let h3Utils = null;
@@ -19,18 +28,6 @@ async function loadH3Modules() {
     console.warn('H3 modules not loaded yet, using fallback:', err.message);
     return false;
   }
-}
-
-// Fallback density functions (used when h3Utils isn't available)
-function fallbackDensityColor(pct) {
-  if (pct >= 80) return '#EF4444';
-  if (pct >= 55) return '#F59E0B';
-  return '#10B981';
-}
-function fallbackDensityLevel(pct) {
-  if (pct >= 80) return 'critical';
-  if (pct >= 55) return 'moderate';
-  return 'safe';
 }
 
 function MapLegend({ mode }) {
@@ -64,6 +61,7 @@ function MapLegend({ mode }) {
 
 export default function Heatmap({ sidebarOpen, setSidebarOpen }) {
   const [zones, setZones] = useState([]);
+  const [venueCenter, setVenueCenter] = useState(null);
   const [loading, setLoading] = useState(true);
   const [totalTracked, setTotalTracked] = useState(0);
   const [lastRefresh, setLastRefresh] = useState(null);
@@ -72,6 +70,7 @@ export default function Heatmap({ sidebarOpen, setSidebarOpen }) {
   const [flowVectors, setFlowVectors] = useState([]);
   const [surgeAlerts, setSurgeAlerts] = useState([]);
   const [attendeeCounts, setAttendeeCounts] = useState({});
+  const [devices, setDevices] = useState([]);
   const [selectedZone, setSelectedZone] = useState(null);
   const previousPositions = useRef([]);
   const flowVectorsRef = useRef([]); // use ref to avoid stale closure in fetchAndComputeH3
@@ -94,6 +93,22 @@ export default function Heatmap({ sidebarOpen, setSidebarOpen }) {
       const locs = locations || [];
       setTotalTracked(locs.length);
       setLastRefresh(new Date());
+
+      // Build active device markers (dedupe by device_id, keep latest)
+      const deviceMap = new Map();
+      locs.forEach(row => {
+        if (row.device_id && row.latitude != null && row.longitude != null) {
+          deviceMap.set(row.device_id, {
+            id: row.device_id,
+            lat: row.latitude,
+            lng: row.longitude,
+            zoneId: row.zone_id,
+            zoneName: row.zone_name,
+            updatedAt: row.updated_at,
+          });
+        }
+      });
+      setDevices(Array.from(deviceMap.values()));
 
       // Count per zone (for sidebar)
       const counts = {};
@@ -147,6 +162,12 @@ export default function Heatmap({ sidebarOpen, setSidebarOpen }) {
         const zoneData = await fetchZones();
         setZones(zoneData);
 
+        // Load event venue location so the map centers on the configured venue
+        const evt = await fetchEventInfo();
+        if (evt && evt.venue_lat && evt.venue_lng) {
+          setVenueCenter([evt.venue_lat, evt.venue_lng]);
+        }
+
         // Try to load H3 modules
         await loadH3Modules();
 
@@ -168,6 +189,16 @@ export default function Heatmap({ sidebarOpen, setSidebarOpen }) {
       })
       .subscribe();
 
+    // Re-centre map when the venue location is changed in Event Setup
+    const eventsChannel = supabase
+      .channel('heatmap-events-v2')
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'events' }, (payload) => {
+        if (payload.new && payload.new.venue_lat && payload.new.venue_lng) {
+          setVenueCenter([payload.new.venue_lat, payload.new.venue_lng]);
+        }
+      })
+      .subscribe();
+
     const attendeeChannel = supabase
       .channel('heatmap-attendees-v2')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'attendee_locations' }, () => {
@@ -180,6 +211,7 @@ export default function Heatmap({ sidebarOpen, setSidebarOpen }) {
 
     return () => {
       supabase.removeChannel(zonesChannel);
+      supabase.removeChannel(eventsChannel);
       supabase.removeChannel(attendeeChannel);
       clearInterval(interval);
     };
@@ -196,17 +228,17 @@ export default function Heatmap({ sidebarOpen, setSidebarOpen }) {
     );
   }
 
-  const totalCapacity = zones.reduce((sum, z) => sum + (z.capacity || 0), 0);
-  const criticalZones = zones.filter(z => (z.density || 0) >= 80).length;
   const hexCritical = Array.from(hexDensityMap.values()).filter(d => d.density_per_sqm >= 4.0).length;
   const peakDensity = hexDensityMap.size > 0
     ? Math.max(...Array.from(hexDensityMap.values()).map(d => d.density_per_sqm))
     : 0;
 
-  // Map center
-  const mapCenter = zones.length > 0
-    ? [zones.reduce((s, z) => s + z.lat, 0) / zones.length, zones.reduce((s, z) => s + z.lng, 0) / zones.length]
-    : [12.8523, 80.0514];
+  // Map center — prefer the configured venue location, else average of zones
+  const mapCenter = venueCenter
+    ? venueCenter
+    : zones.length > 0
+      ? [zones.reduce((s, z) => s + z.lat, 0) / zones.length, zones.reduce((s, z) => s + z.lng, 0) / zones.length]
+      : [12.8523, 80.0514];
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -287,6 +319,9 @@ export default function Heatmap({ sidebarOpen, setSidebarOpen }) {
                   url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                 />
 
+                {/* Fly to venue when location is set / updated */}
+                <FlyToVenue center={venueCenter} />
+
                 {/* H3 Hex Grid Layer */}
                 {hexMode && h3Utils && (
                   <>
@@ -299,6 +334,9 @@ export default function Heatmap({ sidebarOpen, setSidebarOpen }) {
                     <AutoCenter hexDensityMap={hexDensityMap} />
                   </>
                 )}
+
+                {/* Active Device Markers */}
+                <DeviceMarkers devices={devices} />
               </MapContainer>
             </div>
             <MapLegend mode={hexMode ? 'hex' : 'zone'} />
@@ -342,32 +380,36 @@ export default function Heatmap({ sidebarOpen, setSidebarOpen }) {
                 <div className="card-body" style={{ paddingTop: 10 }}>
                   {Array.from(hexDensityMap.entries())
                     .sort(([, a], [, b]) => b.density_per_sqm - a.density_per_sqm)
-                    .slice(0, 8)
+                    .slice(0, 10)
                     .map(([h3Index, data]) => {
-                      const color = h3Utils ? h3Utils.getDensityColor(data.density_per_sqm) : '#10B981';
-                      const level = h3Utils ? h3Utils.getDensityLevel(data.density_per_sqm) : 'SAFE';
+                      const status = h3Utils ? h3Utils.getStatusLabel(data.density_per_sqm) : 'SAFE';
+                      const color = status === 'SURGE' ? '#EF4444' : status === 'CAUTION' ? '#F59E0B' : '#10B981';
+                      const surge = status === 'SURGE';
                       return (
                         <div key={h3Index} style={{
                           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                           padding: '8px 10px', borderRadius: 8, marginBottom: 4,
-                          border: `1px solid ${data.density_per_sqm >= 4.0 ? 'rgba(239,68,68,0.2)' : 'var(--border)'}`,
-                          background: data.density_per_sqm >= 4.0 ? 'rgba(239,68,68,0.03)' : 'var(--bg)',
+                          border: `1px solid ${surge ? 'rgba(239,68,68,0.2)' : 'var(--border)'}`,
+                          background: surge ? 'rgba(239,68,68,0.03)' : 'var(--bg)',
                         }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                             <div style={{
                               width: 10, height: 10, borderRadius: 2, background: color,
-                              boxShadow: data.density_per_sqm >= 4.0 ? '0 0 6px rgba(239,68,68,0.5)' : 'none',
+                              boxShadow: surge ? '0 0 6px rgba(239,68,68,0.5)' : 'none',
                             }} />
                             <div>
                               <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-primary)', fontFamily: 'monospace' }}>
                                 {h3Index.slice(-6)}
                               </div>
                               <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>
-                                {data.count} people · {level}
+                                {data.count} people · {status}
                               </div>
                             </div>
                           </div>
-                          <span style={{ fontSize: '0.82rem', fontWeight: 700, color }}>{data.density_per_sqm.toFixed(1)} /m²</span>
+                          <div style={{ textAlign: 'right' }}>
+                            <span style={{ fontSize: '0.82rem', fontWeight: 700, color }}>{data.density_per_sqm.toFixed(1)} /m²</span>
+                            <div style={{ fontSize: '0.62rem', fontWeight: 700, color, letterSpacing: '0.3px' }}>{status}</div>
+                          </div>
                         </div>
                       );
                     })}
@@ -387,9 +429,11 @@ export default function Heatmap({ sidebarOpen, setSidebarOpen }) {
               </div>
               <div className="card-body" style={{ paddingTop: 10 }}>
                 {zones.map(zone => {
-                  const pct = zone.density || 0;
-                  const color = fallbackDensityColor(pct);
                   const gpsCount = attendeeCounts[zone.id] || 0;
+                  const capacity = zone.capacity || 0;
+                  const occupancyPct = capacity > 0 ? Math.round((gpsCount / capacity) * 100) : 0;
+                  const status = occupancyPct >= 80 ? 'SURGE' : occupancyPct >= 55 ? 'CAUTION' : 'SAFE';
+                  const color = status === 'SURGE' ? '#EF4444' : status === 'CAUTION' ? '#F59E0B' : '#10B981';
                   return (
                     <div
                       key={zone.id}
@@ -397,25 +441,25 @@ export default function Heatmap({ sidebarOpen, setSidebarOpen }) {
                       style={{
                         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                         padding: '10px 12px', borderRadius: 8, cursor: 'pointer', marginBottom: 4,
-                        border: `1px solid ${pct >= 80 ? 'rgba(239,68,68,0.2)' : 'var(--border)'}`,
-                        background: selectedZone?.id === zone.id ? 'var(--primary-light)' : pct >= 80 ? 'rgba(239,68,68,0.03)' : 'var(--bg)',
+                        border: `1px solid ${status === 'SURGE' ? 'rgba(239,68,68,0.2)' : 'var(--border)'}`,
+                        background: selectedZone?.id === zone.id ? 'var(--primary-light)' : status === 'SURGE' ? 'rgba(239,68,68,0.03)' : 'var(--bg)',
                         transition: 'all 0.2s',
                       }}
                     >
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                         <div style={{
                           width: 10, height: 10, borderRadius: '50%', background: color,
-                          boxShadow: pct >= 80 ? '0 0 6px rgba(239,68,68,0.5)' : 'none',
+                          boxShadow: status === 'SURGE' ? '0 0 6px rgba(239,68,68,0.5)' : 'none',
                         }} />
                         <div>
                           <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-primary)' }}>{zone.name}</span>
                           <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginTop: 1 }}>
-                            {gpsCount > 0 ? `${gpsCount} tracked` : 'No devices'} · Cap: {zone.capacity}
+                            {gpsCount > 0 ? `${gpsCount} devices` : 'No devices'} · Cap: {capacity} · {status}
                           </div>
                         </div>
                       </div>
                       <div style={{ textAlign: 'right' }}>
-                        <span style={{ fontSize: '0.85rem', fontWeight: 700, color }}>{pct}%</span>
+                        <span style={{ fontSize: '0.85rem', fontWeight: 700, color }}>{occupancyPct}%</span>
                       </div>
                     </div>
                   );
