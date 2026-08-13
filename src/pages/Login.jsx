@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Mail, Lock, Eye, EyeOff, ArrowRight, ArrowLeft, CheckCircle, Loader } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
@@ -179,6 +179,22 @@ export default function Login() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [view, setView] = useState('login'); // 'login' | 'forgot'
+  const pageRef = useRef(null);
+
+  // Fluid, viewport-proportional zoom on desktop so the whole page
+  // (gradient, circles, card, text) scales with the device width.
+  useEffect(() => {
+    const update = () => {
+      const el = pageRef.current;
+      if (!el) return;
+      if (window.innerWidth < 768) { el.style.zoom = '1'; return; }
+      const scale = Math.min(1.5, Math.max(0.75, window.innerWidth / 1280));
+      el.style.zoom = scale.toFixed(3);
+    };
+    update();
+    window.addEventListener('resize', update);
+    return () => window.removeEventListener('resize', update);
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -226,7 +242,7 @@ export default function Login() {
   };
 
   return (
-    <div className="login-page">
+    <div className="login-page" ref={pageRef}>
       <style>{`
         .login-page {
           min-height: 100vh;
