@@ -235,15 +235,20 @@ export default function Login() {
           background: #f8fafc;
         }
         .login-header {
+          position: absolute;
+          inset: 0;
           background: linear-gradient(135deg, #6366F1 0%, #8B5CF6 25%, #A78BFA 50%, #C4B5FD 72%, #8B5CF6 100%);
           background-size: 300% 300%;
           animation: aurora 16s ease-in-out infinite;
-          height: 35vh;
-          min-height: 260px;
           display: flex;
-          align-items: center;
+          align-items: flex-start;
           justify-content: center;
+          padding-top: clamp(24px, 6vh, 72px);
+          overflow: hidden;
+        }
+        .login-page {
           position: relative;
+          min-height: 100vh;
           overflow: hidden;
         }
         .glow-orb {
@@ -265,7 +270,7 @@ export default function Login() {
         }
         .login-card {
           background: white;
-          margin-top: -30px;
+          margin-top: 0;
           border-radius: 28px 28px 0 0;
           padding: 32px 24px;
           flex: 1;
@@ -287,10 +292,6 @@ export default function Login() {
           .login-page {
             align-items: center;
             justify-content: center;
-          }
-          .login-header {
-            position: fixed;
-            top: 0; left: 0; right: 0; bottom: 0;
           }
           .login-card {
             max-width: 440px;
