@@ -237,36 +237,42 @@ export default function Login() {
         .login-header {
           position: absolute;
           inset: 0;
-          background: linear-gradient(135deg, #6366F1 0%, #8B5CF6 25%, #A78BFA 50%, #C4B5FD 72%, #8B5CF6 100%);
-          background-size: 300% 300%;
-          animation: aurora 16s ease-in-out infinite;
+          background:
+            radial-gradient(1200px 600px at 80% -10%, rgba(139, 92, 246, 0.55), transparent 60%),
+            radial-gradient(900px 500px at 5% 110%, rgba(99, 102, 241, 0.5), transparent 55%),
+            linear-gradient(160deg, #312E81 0%, #4F46E5 45%, #6D28D9 100%);
           display: flex;
           align-items: flex-start;
           justify-content: center;
           padding-top: clamp(24px, 6vh, 72px);
           overflow: hidden;
         }
+        .bg-grid {
+          position: absolute;
+          inset: 0;
+          background-image:
+            linear-gradient(rgba(255, 255, 255, 0.07) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(255, 255, 255, 0.07) 1px, transparent 1px);
+          background-size: 46px 46px;
+          -webkit-mask-image: radial-gradient(ellipse at center, black 35%, transparent 75%);
+          mask-image: radial-gradient(ellipse at center, black 35%, transparent 75%);
+          pointer-events: none;
+        }
+        .bg-orb {
+          position: absolute;
+          border-radius: 50%;
+          filter: blur(60px);
+          pointer-events: none;
+        }
+        @keyframes float {
+          0%   { transform: translate(0, 0) scale(1); }
+          50%  { transform: translate(30px, -25px) scale(1.1); }
+          100% { transform: translate(0, 0) scale(1); }
+        }
         .login-page {
           position: relative;
           min-height: 100vh;
           overflow: hidden;
-        }
-        .glow-orb {
-          position: absolute;
-          border-radius: 50%;
-          filter: blur(40px);
-          opacity: 0.5;
-          pointer-events: none;
-        }
-        @keyframes aurora {
-          0%   { background-position: 0% 50%; }
-          50%  { background-position: 100% 50%; }
-          100% { background-position: 0% 50%; }
-        }
-        @keyframes float {
-          0%   { transform: translate(0, 0) scale(1); }
-          50%  { transform: translate(40px, -30px) scale(1.15); }
-          100% { transform: translate(0, 0) scale(1); }
         }
         .login-card {
           background: white;
@@ -307,15 +313,13 @@ export default function Login() {
       `}</style>
 
       <div className="login-header">
-        {/* Animated concentric circles */}
-        <div className="circle-bg" style={{ width: 300, height: 300, animationDelay: '0s' }}></div>
-        <div className="circle-bg" style={{ width: 450, height: 450, animationDelay: '1s' }}></div>
-        <div className="circle-bg" style={{ width: 600, height: 600, animationDelay: '2s' }}></div>
+        {/* Subtle technical grid overlay */}
+        <div className="bg-grid" />
 
-        {/* Floating glow orbs (same indigo/violet palette) */}
-        <div className="glow-orb" style={{ width: 320, height: 320, top: '10%', left: '-60px', animation: 'float 9s ease-in-out infinite', background: 'radial-gradient(circle, #A78BFA 0%, transparent 70%)' }}></div>
-        <div className="glow-orb" style={{ width: 380, height: 380, bottom: '-80px', right: '-60px', animation: 'float 12s ease-in-out infinite 1.5s', background: 'radial-gradient(circle, #6366F1 0%, transparent 70%)' }}></div>
-        <div className="glow-orb" style={{ width: 260, height: 260, top: '5%', right: '18%', animation: 'float 10s ease-in-out infinite 3s', background: 'radial-gradient(circle, #C4B5FD 0%, transparent 70%)' }}></div>
+        {/* Soft glowing accent orbs */}
+        <div className="bg-orb" style={{ width: 420, height: 420, top: '-80px', right: '8%', background: '#A78BFA', opacity: 0.28, animation: 'float 14s ease-in-out infinite' }}></div>
+        <div className="bg-orb" style={{ width: 380, height: 380, bottom: '-60px', left: '4%', background: '#C4B5FD', opacity: 0.22, animation: 'float 18s ease-in-out infinite 3s' }}></div>
+        <div className="bg-orb" style={{ width: 260, height: 260, top: '40%', left: '30%', background: '#6366F1', opacity: 0.2, animation: 'float 11s ease-in-out infinite 6s' }}></div>
 
         <div style={{ position: 'relative', zIndex: 1, display: 'flex', alignItems: 'center', gap: 12 }}>
           <div className="auth-logo-icon">
