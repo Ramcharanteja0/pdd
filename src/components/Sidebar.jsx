@@ -1,8 +1,8 @@
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useState, useEffect, useRef } from 'react';
 import {
-  LayoutDashboard, Map, Users, Bell, ShoppingBag,
-  BarChart3, AlertTriangle, Zap, ChevronRight, LogOut, Settings, X, Radio, MapPin
+  LayoutDashboard, Map, Bell,
+  BarChart3, AlertTriangle, ChevronRight, LogOut, Settings, X, Radio, MapPin
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
@@ -13,13 +13,11 @@ const NAV = [
     { path: '/dashboard',   label: 'Dashboard',         icon: LayoutDashboard, badgeKey: null       },
     { path: '/heatmap',     label: 'Live Heatmap',      icon: Map,             badgeKey: null       },
     { path: '/alerts',      label: 'Alerts',            icon: Bell,            badgeKey: 'alerts'   },
-    { path: '/staff',       label: 'Staff',             icon: Users,           badgeKey: null       },
   ]},
   { section: 'Tracking', items: [
     { path: '/tracking',    label: 'Live GPS Tracking', icon: Radio,           badgeKey: null       },
   ]},
   { section: 'Intelligence', items: [
-    { path: '/predictions', label: 'AI Predictions',   icon: Zap,             badgeKey: null       },
     { path: '/incidents',   label: 'Incidents',         icon: AlertTriangle,   badgeKey: 'incidents'},
   ]},
   { section: 'Reports & Config', items: [
